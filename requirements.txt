@@ -1,0 +1,5 @@
+playwright>=1.44.0
+python-dotenv>=1.0.1
+matplotlib>=3.8.0    # optional, for box plots
+numpy>=1.26.0        # optional, for box plots
+pyautogui>=0.9.54
