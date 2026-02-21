@@ -63,8 +63,12 @@ class BrowserController:
             )
         else:
             self._browser = self._playwright.firefox.launch(
-                headless=False,
-                firefox_user_prefs={"media.autoplay.default": 0},
+            headless=False,
+            firefox_user_prefs={
+                    "media.autoplay.default": 0,
+                    "media.autoplay.blocking_policy": 0,
+                    "media.autoplay.allow-muted": True,
+                },
             )
 
         context_opts = {"viewport": {"width": 1280, "height": 800}}
@@ -104,7 +108,39 @@ class BrowserController:
         self._page = self._browser = self._context = self._playwright = None
 
     # ── Apple Podcasts ──────────────────────────────────────────────────────────
+    def _dismiss_apple_locale_modal(self):
+        """Apple Podcasts often shows a locale modal (Nederland/Continue/Close) that blocks the player."""
+        try:
+            # Close button
+            close = self._page.locator('[data-testid="close-button"], button[aria-label="Close"]').first
+            if close.is_visible(timeout=1000):
+                close.click()
+                log.info("    Apple: closed locale modal.")
+                time.sleep(0.8)
+                return
 
+            # Or click Continue if shown
+            cont = self._page.locator('[data-testid="select-button"]:has-text("Continue"), button:has-text("Continue")').first
+            if cont.is_visible(timeout=1000):
+                cont.click()
+                log.info("    Apple: confirmed locale modal (Continue).")
+                time.sleep(1.0)
+                return
+        except Exception:
+            pass
+
+    def _wait_for_apple_playing(self, timeout: int = 15) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                # If UI flips to "Pause", we're playing
+                if self._page.locator('button:has-text("Pause"), [data-testid="button-base"]:has-text("Pause")').count() > 0:
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.5)
+        return False
+    
     def _play_and_set_speed_apple(self):
         """
         Step 1: Click play button to trigger Apple's player initialization
@@ -114,58 +150,78 @@ class BrowserController:
         Step 3: Set playbackRate.
         """
         log.info("    Apple: clicking play button to initialize player...")
+        self._dismiss_apple_locale_modal()
         self._click_play_button_apple()
 
-        # Wait for <audio> to appear (player initialization)
-        log.info("    Apple: waiting for <audio> element...")
-        if not self._wait_for_audio(timeout=15):
-            log.warning("    Apple: <audio> not found after 15s. Retrying click...")
+        log.info("    Apple: waiting for playback to start...")
+        if not self._wait_for_apple_playing(timeout=15):
+            log.warning("    Apple: playback not confirmed. Retrying: dismiss modal + click Play again...")
+            self._dismiss_apple_locale_modal()
             self._click_play_button_apple()
-            self._wait_for_audio(timeout=10)
+            self._wait_for_apple_playing(timeout=10)
 
         # Now force-play via JS
-        log.info("    Apple: calling audio.play() via JS...")
-        self._js_play_and_set_speed()
+        if self._page.evaluate("() => !!document.querySelector('audio')"):
+            log.info("    Apple: calling audio.play() via JS...")
+            self._js_play_and_set_speed()
+        else:
+            log.info("    Apple: no <audio> element exposed; relying on UI-driven playback.")
 
     def _click_play_button_apple(self):
         """Click the play button to trigger player init — not to actually play."""
         result = self._page.evaluate("""
             () => {
-                const selectors = [
-                    'button[aria-label="Play"]',
-                    'button[aria-label="Play Episode"]',
-                    'button[aria-label*="Play"]',
-                    '.web-chrome-playback-controls__play',
+                // 1) Grab candidate buttons using valid CSS selectors
+                const candidates = [
+                    ...document.querySelectorAll('[data-testid="button-base"]'),
+                    ...document.querySelectorAll('button'),
                 ];
-                for (const sel of selectors) {
-                    const btns = [...document.querySelectorAll(sel)];
-                    for (const btn of btns) {
-                        const r = btn.getBoundingClientRect();
-                        if (r.width < 20 || r.height < 20) continue;
-                        btn.click();
-                        return {sel, x: Math.round(r.x), y: Math.round(r.y),
-                                w: Math.round(r.width), h: Math.round(r.height),
-                                aria: btn.getAttribute('aria-label')};
-                    }
-                }
-                // fallback: any button with 'play' in aria-label
-                const all = [...document.querySelectorAll('button')];
-                for (const btn of all) {
-                    const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-                    if (!aria.includes('play')) continue;
+
+                // 2) Click the first visible button whose text is exactly "Play"
+                for (const btn of candidates) {
+                    const txt = (btn.innerText || "").trim().toLowerCase();
+                    if (txt !== "play") continue;
                     const r = btn.getBoundingClientRect();
                     if (r.width < 20 || r.height < 20) continue;
+                    btn.scrollIntoView({block: 'center'});
                     btn.click();
-                    return {sel: 'fallback', aria: btn.getAttribute('aria-label'),
-                            x: Math.round(r.x), y: Math.round(r.y),
-                            w: Math.round(r.width), h: Math.round(r.height)};
+                    return {
+                        sel: "text==play",
+                        text: btn.innerText.trim(),
+                        aria: btn.getAttribute("aria-label"),
+                        testid: btn.getAttribute("data-testid"),
+                        x: Math.round(r.x), y: Math.round(r.y),
+                        w: Math.round(r.width), h: Math.round(r.height)
+                    };
                 }
+
+                // 3) Fallback: aria-label contains play (if Apple changes markup)
+                const buttons = [...document.querySelectorAll("button")];
+                for (const btn of buttons) {
+                    const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
+                    if (!aria.includes("play")) continue;
+                    const r = btn.getBoundingClientRect();
+                    if (r.width < 20 || r.height < 20) continue;
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return {
+                        sel: "aria~play",
+                        aria: btn.getAttribute("aria-label"),
+                        testid: btn.getAttribute("data-testid"),
+                        x: Math.round(r.x), y: Math.round(r.y),
+                        w: Math.round(r.width), h: Math.round(r.height)
+                    };
+                }
+
                 return null;
             }
         """)
         if result:
-            log.info(f"    Apple: clicked '{result['aria']}' at "
-                     f"({result['x']}, {result['y']}) size={result['w']}×{result['h']}")
+            log.info(
+                f"    Apple: clicked ({result.get('sel')}) "
+                f"text='{result.get('text')}' aria='{result.get('aria')}' "
+                f"at ({result['x']}, {result['y']}) size={result['w']}×{result['h']}"
+            )
         else:
             log.warning("    Apple: no play button found in DOM — dumping buttons:")
             self._debug_dump_buttons()

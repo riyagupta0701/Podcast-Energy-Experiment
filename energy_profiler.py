@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 # Path to EnergyBridge binary — override with env var ENERGIBRIDGE_PATH
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
-    "energibridge",   # assumed to be on PATH
+    "energybridge",   # assumed to be on PATH
 )
 
 # Sampling interval in milliseconds
@@ -74,6 +74,11 @@ class EnergyProfiler:
             "--",
             *self._idle_command(),
         ]
+
+        # On Linux/AMD, energy counters often require elevated privileges.
+        # Run only EnergyBridge with sudo (non-interactive) so the rest of the experiment stays unprivileged.
+        if platform.system() == "Linux":
+            cmd = ["sudo", "-n", *cmd]
 
         log.debug(f"    EnergyBridge cmd: {' '.join(cmd)}")
 
