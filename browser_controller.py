@@ -63,8 +63,12 @@ class BrowserController:
             )
         else:
             self._browser = self._playwright.firefox.launch(
-                headless=False,
-                firefox_user_prefs={"media.autoplay.default": 0},
+            headless=False,
+            firefox_user_prefs={
+                    "media.autoplay.default": 0,
+                    "media.autoplay.blocking_policy": 0,
+                    "media.autoplay.allow-muted": True,
+                },
             )
 
         context_opts = {"viewport": {"width": 1280, "height": 800}}
@@ -104,71 +108,105 @@ class BrowserController:
         self._page = self._browser = self._context = self._playwright = None
 
     # ── Apple Podcasts ──────────────────────────────────────────────────────────
+    def _dismiss_apple_locale_modal(self):
+        """
+        Apple Podcasts shows a locale/region modal on first visit.
+        Clicking 'Continue' navigates away to the homepage, so we avoid it.
+        Strategy: click Close (X) button, or press Escape, then re-navigate
+        to the episode URL if the page changed.
+        """
+        episode_url = self.url
+        try:
+            # Prefer the X / Close button which does NOT navigate away
+            close = self._page.locator(
+                '[data-testid="close-button"], button[aria-label="Close"], button[aria-label="close"]'
+            ).first
+            if close.is_visible(timeout=2000):
+                close.click()
+                log.info("    Apple: closed locale modal via X button.")
+                time.sleep(1.0)
+                if episode_url not in self._page.url:
+                    log.info("    Apple: redirected after close — re-navigating to episode.")
+                    self._page.goto(episode_url, wait_until="domcontentloaded")
+                    time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+                return
+
+            # If only Continue is visible, use Escape to avoid navigation
+            cont = self._page.locator(
+                '[data-testid="select-button"]:has-text("Continue"), button:has-text("Continue")'
+            ).first
+            if cont.is_visible(timeout=1000):
+                log.info("    Apple: locale modal found — pressing Escape to dismiss.")
+                self._page.keyboard.press("Escape")
+                time.sleep(0.8)
+                if episode_url not in self._page.url:
+                    log.info("    Apple: still redirected — re-navigating to episode.")
+                    self._page.goto(episode_url, wait_until="domcontentloaded")
+                    time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+                return
+        except Exception as e:
+            log.debug(f"    Apple locale modal: {e}")
 
     def _play_and_set_speed_apple(self):
         """
-        Step 1: Click play button to trigger Apple's player initialization
-                (this creates the <audio> element).
-        Step 2: Once <audio> exists, call .play() directly via JS —
-                this bypasses autoplay policy because of our Chromium flag.
-        Step 3: Set playbackRate.
-        """
-        log.info("    Apple: clicking play button to initialize player...")
-        self._click_play_button_apple()
+        Use Playwright's locator.click() — unlike btn.click() inside evaluate(),
+        Playwright clicks are trusted browser gestures that unblock autoplay.
 
-        # Wait for <audio> to appear (player initialization)
+        Strategy:
+          1. Dismiss any locale/region modal
+          2. Try each play-button selector via Playwright locator.click()
+          3. Poll for <audio> element (appears once player initialises)
+          4. Call audio.play() + set playbackRate via JS
+        """
+        self._dismiss_apple_locale_modal()
+
+        # Ordered list of selectors — Playwright locator clicks are trusted gestures
+        play_selectors = [
+            '[data-testid="button-base"]:has-text("Play")',
+            'button:has-text("Play")',
+            'button[aria-label="Play"]',
+            'button[aria-label="Play Episode"]',
+            'button[aria-label*="Play"]',
+            '.web-chrome-playback-controls__play',
+        ]
+
+        clicked = None
+        for sel in play_selectors:
+            try:
+                loc = self._page.locator(sel).first
+                loc.wait_for(state="visible", timeout=4_000)
+                loc.click()
+                clicked = sel
+                log.info(f"    Apple: play clicked via Playwright locator '{sel}'.")
+                break
+            except Exception:
+                continue
+
+        if not clicked:
+            log.warning("    Apple: no play selector matched — dumping all buttons:")
+            self._debug_dump_buttons()
+
+        # Poll for <audio> — reliable confirmation that the player has initialised
         log.info("    Apple: waiting for <audio> element...")
         if not self._wait_for_audio(timeout=15):
-            log.warning("    Apple: <audio> not found after 15s. Retrying click...")
-            self._click_play_button_apple()
+            log.warning("    Apple: <audio> not found after 15s — retrying click...")
+            self._dismiss_apple_locale_modal()
+            for sel in play_selectors:
+                try:
+                    loc = self._page.locator(sel).first
+                    loc.wait_for(state="visible", timeout=3_000)
+                    loc.click()
+                    log.info(f"    Apple: retry click via '{sel}'.")
+                    break
+                except Exception:
+                    continue
             self._wait_for_audio(timeout=10)
 
-        # Now force-play via JS
-        log.info("    Apple: calling audio.play() via JS...")
-        self._js_play_and_set_speed()
-
-    def _click_play_button_apple(self):
-        """Click the play button to trigger player init — not to actually play."""
-        result = self._page.evaluate("""
-            () => {
-                const selectors = [
-                    'button[aria-label="Play"]',
-                    'button[aria-label="Play Episode"]',
-                    'button[aria-label*="Play"]',
-                    '.web-chrome-playback-controls__play',
-                ];
-                for (const sel of selectors) {
-                    const btns = [...document.querySelectorAll(sel)];
-                    for (const btn of btns) {
-                        const r = btn.getBoundingClientRect();
-                        if (r.width < 20 || r.height < 20) continue;
-                        btn.click();
-                        return {sel, x: Math.round(r.x), y: Math.round(r.y),
-                                w: Math.round(r.width), h: Math.round(r.height),
-                                aria: btn.getAttribute('aria-label')};
-                    }
-                }
-                // fallback: any button with 'play' in aria-label
-                const all = [...document.querySelectorAll('button')];
-                for (const btn of all) {
-                    const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-                    if (!aria.includes('play')) continue;
-                    const r = btn.getBoundingClientRect();
-                    if (r.width < 20 || r.height < 20) continue;
-                    btn.click();
-                    return {sel: 'fallback', aria: btn.getAttribute('aria-label'),
-                            x: Math.round(r.x), y: Math.round(r.y),
-                            w: Math.round(r.width), h: Math.round(r.height)};
-                }
-                return null;
-            }
-        """)
-        if result:
-            log.info(f"    Apple: clicked '{result['aria']}' at "
-                     f"({result['x']}, {result['y']}) size={result['w']}×{result['h']}")
+        if self._page.evaluate("() => !!document.querySelector('audio')"):
+            log.info("    Apple: <audio> found — calling audio.play() via JS...")
+            self._js_play_and_set_speed()
         else:
-            log.warning("    Apple: no play button found in DOM — dumping buttons:")
-            self._debug_dump_buttons()
+            log.warning("    Apple: <audio> still not present. Check browser window.")
 
     # ── Spotify ─────────────────────────────────────────────────────────────────
 

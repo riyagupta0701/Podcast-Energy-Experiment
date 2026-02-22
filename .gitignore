@@ -1,0 +1,55 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ===============================
+# Environment & Secrets
+# ===============================
+.env
+.env.*
+spotify_session.json
+
+# ===============================
+# Experiment outputs
+# ===============================
+results/
+results_test/
+*.csv
+*.log
+*.jsonl
+
+# ===============================
+# Playwright
+# ===============================
+playwright-report/
+test-results/
+trace.zip
+
+# ===============================
+# IDE / Editor
+# ===============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===============================
+# OS files
+# ===============================
+.DS_Store
+Thumbs.db

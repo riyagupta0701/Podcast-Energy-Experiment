@@ -75,6 +75,11 @@ class EnergyProfiler:
             *self._idle_command(),
         ]
 
+        # On Linux/AMD, energy counters often require elevated privileges.
+        # Run only EnergyBridge with sudo (non-interactive) so the rest of the experiment stays unprivileged.
+        if platform.system() == "Linux":
+            cmd = ["sudo", "-n", *cmd]
+
         log.debug(f"    EnergyBridge cmd: {' '.join(cmd)}")
 
         self._proc = subprocess.Popen(
