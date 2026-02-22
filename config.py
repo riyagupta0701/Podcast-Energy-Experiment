@@ -39,7 +39,7 @@ APPLE_EPISODE_URL = os.getenv(
 # ── Experiment settings ────────────────────────────────────────────────────────
 EXPERIMENT_SETTINGS = {
     "runs_per_config": 30,
-    "measurement_duration_seconds": 120,   # 2 minutes of active playback per run
+    "measurement_duration_seconds": 45,   # 2 minutes of active playback per run
     "cooldown_seconds": 30,                # idle pause between runs
     "browser_startup_wait": 5,             # seconds after browser opens
     "page_load_wait": 10,                  # seconds after navigating to episode URL

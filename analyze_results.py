@@ -12,7 +12,6 @@ import argparse
 import csv
 import json
 import math
-import os
 from pathlib import Path
 
 
@@ -65,10 +64,13 @@ def print_table(stats_by_config: dict):
     for config, s in stats_by_config.items():
         rows.append([
             config, s["n"], s["mean_J"], s["median_J"],
-            s["std_J"], s["min_J"], s["max_J"], s.get("cv_pct", "N/A"),
+            s["std_J"], s["min_J"], s["max_J"],
+            s["cv_pct"] if s.get("cv_pct") is not None else "N/A",
         ])
 
     col_widths = [max(len(str(r[i])) for r in rows + [headers]) + 2 for i in range(len(headers))]
+    # ensure all row values are strings so format() doesn't choke on None
+    rows = [[str(v) for v in row] for row in rows]
     fmt = "".join(f"{{:<{w}}}" for w in col_widths)
     sep = "-" * sum(col_widths)
 

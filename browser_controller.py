@@ -63,27 +63,34 @@ class BrowserController:
             )
         # else:
         elif self.browser_name == "brave":
-            brave_profile = ".pw-brave-profile"  # persistent dir inside repo
+            import platform as _platform
+            import os as _os
+            system = _platform.system()
+            if system == "Darwin":
+                brave_exe = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+            elif system == "Windows":
+                brave_exe = _os.path.expandvars(
+                    r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"
+                )
+            else:
+                brave_exe = "/usr/bin/brave-browser"
+
+            brave_profile = ".pw-brave-profile"  # isolated profile inside repo
             self._context = self._playwright.chromium.launch_persistent_context(
                 user_data_dir=brave_profile,
-                executable_path="/usr/bin/brave-browser",
+                executable_path=brave_exe,
                 headless=False,
                 viewport={"width": 1280, "height": 800},
                 args=[
                     *self._chromium_args(),
                     "--no-first-run",
                     "--no-default-browser-check",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-features=UseOzonePlatform",
-                    "--ozone-platform=x11",
                 ],
             )
 
-            # IMPORTANT: use existing page if Brave created one
+            # Use existing page if Brave opened one, otherwise create new
             self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
 
-            # ✅ do the same steps as normal setup
             log.info(f"    Navigating to: {self.url}")
             self._page.goto(self.url, wait_until="domcontentloaded")
             time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])

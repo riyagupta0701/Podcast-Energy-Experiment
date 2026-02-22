@@ -8,11 +8,9 @@ across Chrome/Firefox at 1x/2x playback speeds.
 import argparse
 import json
 import logging
-import os
-import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import CONFIGS, EXPERIMENT_SETTINGS
@@ -20,6 +18,7 @@ from browser_controller import BrowserController
 from energy_profiler import EnergyProfiler
 from results_manager import ResultsManager
 
+Path("logs").mkdir(exist_ok=True)  # must exist before FileHandler
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -71,7 +70,7 @@ def run_single_trial(config: dict, run_id: int, dry_run: bool, output_dir: str) 
     result = {
         "config": config_name,
         "run_id": run_id,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "success": False,
         "energy_data": None,
         "error": None,
@@ -126,7 +125,6 @@ def run_single_trial(config: dict, run_id: int, dry_run: bool, output_dir: str) 
 def main():
     args = parse_args()
 
-    Path("logs").mkdir(exist_ok=True)
     Path(args.output_dir).mkdir(exist_ok=True)
 
     configs_to_run = CONFIGS
