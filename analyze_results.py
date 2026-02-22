@@ -117,7 +117,7 @@ def plot_matplotlib(data: dict[str, list[float]], output_path: str):
         configs = list(data.keys())
         values_list = [data[c] for c in configs]
 
-        ax.boxplot(values_list, labels=configs, vert=True, patch_artist=True)
+        ax.boxplot(values_list, tick_labels=configs, vert=True, patch_artist=True)
         ax.set_ylabel("Energy (Joules)")
         ax.set_title("Podcast Web Player Energy Consumption by Configuration")
         plt.xticks(rotation=30, ha="right")
