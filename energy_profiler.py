@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 # Path to EnergyBridge binary — override with env var ENERGIBRIDGE_PATH
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
-    "energybridge",   # assumed to be on PATH
+    "energibridge",   # assumed to be on PATH
 )
 
 # Sampling interval in milliseconds
