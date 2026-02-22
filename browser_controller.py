@@ -61,16 +61,35 @@ class BrowserController:
                 headless=False,
                 args=self._chromium_args(),
             )
-        else:
-            self._browser = self._playwright.firefox.launch(
-            headless=False,
-            firefox_user_prefs={
-                    "media.autoplay.default": 0,
-                    "media.autoplay.blocking_policy": 0,
-                    "media.autoplay.allow-muted": True,
-                },
+        # else:
+        elif self.browser_name == "brave":
+            brave_profile = ".pw-brave-profile"  # persistent dir inside repo
+            self._context = self._playwright.chromium.launch_persistent_context(
+                user_data_dir=brave_profile,
+                executable_path="/usr/bin/brave-browser",
+                headless=False,
+                viewport={"width": 1280, "height": 800},
+                args=[
+                    *self._chromium_args(),
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-features=UseOzonePlatform",
+                    "--ozone-platform=x11",
+                ],
             )
 
+            # IMPORTANT: use existing page if Brave created one
+            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+
+            # ✅ do the same steps as normal setup
+            log.info(f"    Navigating to: {self.url}")
+            self._page.goto(self.url, wait_until="domcontentloaded")
+            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+            self._dismiss_cookies()
+            return
+        
         context_opts = {"viewport": {"width": 1280, "height": 800}}
         if self.platform == "spotify":
             session_path = Path(SPOTIFY_SESSION_FILE)
@@ -100,13 +119,10 @@ class BrowserController:
         try:
             if self._context:
                 self._context.close()
-            if self._browser:
-                self._browser.close()
         finally:
             if self._playwright:
                 self._playwright.stop()
         self._page = self._browser = self._context = self._playwright = None
-
     # ── Apple Podcasts ──────────────────────────────────────────────────────────
     def _dismiss_apple_locale_modal(self):
         """

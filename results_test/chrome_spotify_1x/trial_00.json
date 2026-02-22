@@ -1,8 +1,0 @@
-{
-  "config": "chrome_spotify_1x",
-  "run_id": 0,
-  "timestamp": "2026-02-21T11:09:34.841164",
-  "success": false,
-  "energy_data": null,
-  "error": "EnergyBridge failed to start: \nthread 'main' (376762) panicked at src/cpu/amd.rs:20:76:\ncalled `Result::unwrap()` on an `Err` value: Os { code: 13, kind: PermissionDenied, message: \"Permission denied\" }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
-}

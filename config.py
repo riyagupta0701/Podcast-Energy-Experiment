@@ -48,12 +48,15 @@ EXPERIMENT_SETTINGS = {
 
 # ── Eight configurations ───────────────────────────────────────────────────────
 CONFIGS = [
-    {"name": "chrome_apple_1x",   "browser": "chrome",  "platform": "apple",   "speed": 1.0, "url": APPLE_EPISODE_URL},
-    {"name": "chrome_apple_2x",   "browser": "chrome",  "platform": "apple",   "speed": 2.0, "url": APPLE_EPISODE_URL},
-    {"name": "chrome_spotify_1x", "browser": "chrome",  "platform": "spotify", "speed": 1.0, "url": SPOTIFY_EPISODE_URL},
-    {"name": "chrome_spotify_2x", "browser": "chrome",  "platform": "spotify", "speed": 2.0, "url": SPOTIFY_EPISODE_URL},
-    {"name": "firefox_apple_1x",  "browser": "firefox", "platform": "apple",   "speed": 1.0, "url": APPLE_EPISODE_URL},
-    {"name": "firefox_apple_2x",  "browser": "firefox", "platform": "apple",   "speed": 2.0, "url": APPLE_EPISODE_URL},
-    {"name": "firefox_spotify_1x","browser": "firefox", "platform": "spotify", "speed": 1.0, "url": SPOTIFY_EPISODE_URL},
-    {"name": "firefox_spotify_2x","browser": "firefox", "platform": "spotify", "speed": 2.0, "url": SPOTIFY_EPISODE_URL},
+    {"name": "chrome_spotify_1x", "browser": "chrome", "platform": "spotify", "speed": 1.0, "url": SPOTIFY_EPISODE_URL},
+    {"name": "chrome_spotify_2x", "browser": "chrome", "platform": "spotify", "speed": 2.0, "url": SPOTIFY_EPISODE_URL},
+
+    {"name": "brave_spotify_1x", "browser": "brave", "platform": "spotify", "speed": 1.0, "url": SPOTIFY_EPISODE_URL},
+    {"name": "brave_spotify_2x", "browser": "brave", "platform": "spotify", "speed": 2.0, "url": SPOTIFY_EPISODE_URL},
+
+    {"name": "chrome_apple_1x", "browser": "chrome", "platform": "apple", "speed": 1.0, "url": APPLE_EPISODE_URL},
+    {"name": "chrome_apple_2x", "browser": "chrome", "platform": "apple", "speed": 2.0, "url": APPLE_EPISODE_URL},
+
+    {"name": "brave_apple_1x", "browser": "brave", "platform": "apple", "speed": 1.0, "url": APPLE_EPISODE_URL},
+    {"name": "brave_apple_2x", "browser": "brave", "platform": "apple", "speed": 2.0, "url": APPLE_EPISODE_URL},
 ]
