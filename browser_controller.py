@@ -109,122 +109,104 @@ class BrowserController:
 
     # ── Apple Podcasts ──────────────────────────────────────────────────────────
     def _dismiss_apple_locale_modal(self):
-        """Apple Podcasts often shows a locale modal (Nederland/Continue/Close) that blocks the player."""
+        """
+        Apple Podcasts shows a locale/region modal on first visit.
+        Clicking 'Continue' navigates away to the homepage, so we avoid it.
+        Strategy: click Close (X) button, or press Escape, then re-navigate
+        to the episode URL if the page changed.
+        """
+        episode_url = self.url
         try:
-            # Close button
-            close = self._page.locator('[data-testid="close-button"], button[aria-label="Close"]').first
-            if close.is_visible(timeout=1000):
+            # Prefer the X / Close button which does NOT navigate away
+            close = self._page.locator(
+                '[data-testid="close-button"], button[aria-label="Close"], button[aria-label="close"]'
+            ).first
+            if close.is_visible(timeout=2000):
                 close.click()
-                log.info("    Apple: closed locale modal.")
-                time.sleep(0.8)
-                return
-
-            # Or click Continue if shown
-            cont = self._page.locator('[data-testid="select-button"]:has-text("Continue"), button:has-text("Continue")').first
-            if cont.is_visible(timeout=1000):
-                cont.click()
-                log.info("    Apple: confirmed locale modal (Continue).")
+                log.info("    Apple: closed locale modal via X button.")
                 time.sleep(1.0)
+                if episode_url not in self._page.url:
+                    log.info("    Apple: redirected after close — re-navigating to episode.")
+                    self._page.goto(episode_url, wait_until="domcontentloaded")
+                    time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
                 return
-        except Exception:
-            pass
 
-    def _wait_for_apple_playing(self, timeout: int = 15) -> bool:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                # If UI flips to "Pause", we're playing
-                if self._page.locator('button:has-text("Pause"), [data-testid="button-base"]:has-text("Pause")').count() > 0:
-                    return True
-            except Exception:
-                pass
-            time.sleep(0.5)
-        return False
-    
+            # If only Continue is visible, use Escape to avoid navigation
+            cont = self._page.locator(
+                '[data-testid="select-button"]:has-text("Continue"), button:has-text("Continue")'
+            ).first
+            if cont.is_visible(timeout=1000):
+                log.info("    Apple: locale modal found — pressing Escape to dismiss.")
+                self._page.keyboard.press("Escape")
+                time.sleep(0.8)
+                if episode_url not in self._page.url:
+                    log.info("    Apple: still redirected — re-navigating to episode.")
+                    self._page.goto(episode_url, wait_until="domcontentloaded")
+                    time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+                return
+        except Exception as e:
+            log.debug(f"    Apple locale modal: {e}")
+
     def _play_and_set_speed_apple(self):
         """
-        Step 1: Click play button to trigger Apple's player initialization
-                (this creates the <audio> element).
-        Step 2: Once <audio> exists, call .play() directly via JS —
-                this bypasses autoplay policy because of our Chromium flag.
-        Step 3: Set playbackRate.
+        Use Playwright's locator.click() — unlike btn.click() inside evaluate(),
+        Playwright clicks are trusted browser gestures that unblock autoplay.
+
+        Strategy:
+          1. Dismiss any locale/region modal
+          2. Try each play-button selector via Playwright locator.click()
+          3. Poll for <audio> element (appears once player initialises)
+          4. Call audio.play() + set playbackRate via JS
         """
-        log.info("    Apple: clicking play button to initialize player...")
         self._dismiss_apple_locale_modal()
-        self._click_play_button_apple()
 
-        log.info("    Apple: waiting for playback to start...")
-        if not self._wait_for_apple_playing(timeout=15):
-            log.warning("    Apple: playback not confirmed. Retrying: dismiss modal + click Play again...")
+        # Ordered list of selectors — Playwright locator clicks are trusted gestures
+        play_selectors = [
+            '[data-testid="button-base"]:has-text("Play")',
+            'button:has-text("Play")',
+            'button[aria-label="Play"]',
+            'button[aria-label="Play Episode"]',
+            'button[aria-label*="Play"]',
+            '.web-chrome-playback-controls__play',
+        ]
+
+        clicked = None
+        for sel in play_selectors:
+            try:
+                loc = self._page.locator(sel).first
+                loc.wait_for(state="visible", timeout=4_000)
+                loc.click()
+                clicked = sel
+                log.info(f"    Apple: play clicked via Playwright locator '{sel}'.")
+                break
+            except Exception:
+                continue
+
+        if not clicked:
+            log.warning("    Apple: no play selector matched — dumping all buttons:")
+            self._debug_dump_buttons()
+
+        # Poll for <audio> — reliable confirmation that the player has initialised
+        log.info("    Apple: waiting for <audio> element...")
+        if not self._wait_for_audio(timeout=15):
+            log.warning("    Apple: <audio> not found after 15s — retrying click...")
             self._dismiss_apple_locale_modal()
-            self._click_play_button_apple()
-            self._wait_for_apple_playing(timeout=10)
+            for sel in play_selectors:
+                try:
+                    loc = self._page.locator(sel).first
+                    loc.wait_for(state="visible", timeout=3_000)
+                    loc.click()
+                    log.info(f"    Apple: retry click via '{sel}'.")
+                    break
+                except Exception:
+                    continue
+            self._wait_for_audio(timeout=10)
 
-        # Now force-play via JS
         if self._page.evaluate("() => !!document.querySelector('audio')"):
-            log.info("    Apple: calling audio.play() via JS...")
+            log.info("    Apple: <audio> found — calling audio.play() via JS...")
             self._js_play_and_set_speed()
         else:
-            log.info("    Apple: no <audio> element exposed; relying on UI-driven playback.")
-
-    def _click_play_button_apple(self):
-        """Click the play button to trigger player init — not to actually play."""
-        result = self._page.evaluate("""
-            () => {
-                // 1) Grab candidate buttons using valid CSS selectors
-                const candidates = [
-                    ...document.querySelectorAll('[data-testid="button-base"]'),
-                    ...document.querySelectorAll('button'),
-                ];
-
-                // 2) Click the first visible button whose text is exactly "Play"
-                for (const btn of candidates) {
-                    const txt = (btn.innerText || "").trim().toLowerCase();
-                    if (txt !== "play") continue;
-                    const r = btn.getBoundingClientRect();
-                    if (r.width < 20 || r.height < 20) continue;
-                    btn.scrollIntoView({block: 'center'});
-                    btn.click();
-                    return {
-                        sel: "text==play",
-                        text: btn.innerText.trim(),
-                        aria: btn.getAttribute("aria-label"),
-                        testid: btn.getAttribute("data-testid"),
-                        x: Math.round(r.x), y: Math.round(r.y),
-                        w: Math.round(r.width), h: Math.round(r.height)
-                    };
-                }
-
-                // 3) Fallback: aria-label contains play (if Apple changes markup)
-                const buttons = [...document.querySelectorAll("button")];
-                for (const btn of buttons) {
-                    const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
-                    if (!aria.includes("play")) continue;
-                    const r = btn.getBoundingClientRect();
-                    if (r.width < 20 || r.height < 20) continue;
-                    btn.scrollIntoView({block: 'center'});
-                    btn.click();
-                    return {
-                        sel: "aria~play",
-                        aria: btn.getAttribute("aria-label"),
-                        testid: btn.getAttribute("data-testid"),
-                        x: Math.round(r.x), y: Math.round(r.y),
-                        w: Math.round(r.width), h: Math.round(r.height)
-                    };
-                }
-
-                return null;
-            }
-        """)
-        if result:
-            log.info(
-                f"    Apple: clicked ({result.get('sel')}) "
-                f"text='{result.get('text')}' aria='{result.get('aria')}' "
-                f"at ({result['x']}, {result['y']}) size={result['w']}×{result['h']}"
-            )
-        else:
-            log.warning("    Apple: no play button found in DOM — dumping buttons:")
-            self._debug_dump_buttons()
+            log.warning("    Apple: <audio> still not present. Check browser window.")
 
     # ── Spotify ─────────────────────────────────────────────────────────────────
 
