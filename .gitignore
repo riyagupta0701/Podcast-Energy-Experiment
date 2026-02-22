@@ -53,3 +53,7 @@ trace.zip
 # ===============================
 .DS_Store
 Thumbs.db
+
+.pw-brave-profile/
+.pw-chrome-profile/
+

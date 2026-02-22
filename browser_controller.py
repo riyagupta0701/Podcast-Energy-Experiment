@@ -1,21 +1,3 @@
-"""
-Browser automation for Spotify and Apple Podcasts web players.
-
-Core insight: Both platforms block synthetic click events due to autoplay
-policy. But Chromium is launched with --autoplay-policy=no-user-gesture-required,
-which means we can call audio.play() directly from JavaScript WITHOUT any
-user gesture. So the strategy is:
-
-  1. Navigate to the episode page
-  2. Wait for the page + audio element to load
-  3. Call audio.play() + set audio.playbackRate via JS
-  4. No button clicking needed at all
-
-For pages where <audio> is not immediately present (Spotify, Apple Podcasts
-lazy-load it), we first click the play button to trigger the player
-initialization, THEN call audio.play() to actually start playback.
-"""
-
 import logging
 import time
 from pathlib import Path
@@ -57,20 +39,58 @@ class BrowserController:
         self._playwright = sync_playwright().start()
 
         if self.browser_name == "chrome":
-            self._browser = self._playwright.chromium.launch(
+            self._context = self._playwright.chromium.launch_persistent_context(
+                user_data_dir=".pw-chrome-profile",
                 headless=False,
-                args=self._chromium_args(),
+                viewport={"width": 1280, "height": 800},
+                args=[
+                    *self._chromium_args(),
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                ],
             )
-        else:
-            self._browser = self._playwright.firefox.launch(
-            headless=False,
-            firefox_user_prefs={
-                    "media.autoplay.default": 0,
-                    "media.autoplay.blocking_policy": 0,
-                    "media.autoplay.allow-muted": True,
-                },
+            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+
+            log.info(f"    Navigating to: {self.url}")
+            self._page.goto(self.url, wait_until="domcontentloaded")
+            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+            self._dismiss_cookies()
+            return
+        # else:
+        elif self.browser_name == "brave":
+            import platform as _platform
+            import os as _os
+            system = _platform.system()
+            if system == "Darwin":
+                brave_exe = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+            elif system == "Windows":
+                brave_exe = _os.path.expandvars(
+                    r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"
+                )
+            else:
+                brave_exe = "/usr/bin/brave-browser"
+
+            brave_profile = ".pw-brave-profile"
+            self._context = self._playwright.chromium.launch_persistent_context(
+                user_data_dir=brave_profile,
+                executable_path=brave_exe,
+                headless=False,
+                viewport={"width": 1280, "height": 800},
+                args=[
+                    *self._chromium_args(),
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                ],
             )
 
+            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+
+            log.info(f"    Navigating to: {self.url}")
+            self._page.goto(self.url, wait_until="domcontentloaded")
+            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+            self._dismiss_cookies()
+            return
+        
         context_opts = {"viewport": {"width": 1280, "height": 800}}
         if self.platform == "spotify":
             session_path = Path(SPOTIFY_SESSION_FILE)
@@ -100,24 +120,16 @@ class BrowserController:
         try:
             if self._context:
                 self._context.close()
-            if self._browser:
-                self._browser.close()
         finally:
             if self._playwright:
                 self._playwright.stop()
         self._page = self._browser = self._context = self._playwright = None
 
     # ── Apple Podcasts ──────────────────────────────────────────────────────────
+
     def _dismiss_apple_locale_modal(self):
-        """
-        Apple Podcasts shows a locale/region modal on first visit.
-        Clicking 'Continue' navigates away to the homepage, so we avoid it.
-        Strategy: click Close (X) button, or press Escape, then re-navigate
-        to the episode URL if the page changed.
-        """
         episode_url = self.url
         try:
-            # Prefer the X / Close button which does NOT navigate away
             close = self._page.locator(
                 '[data-testid="close-button"], button[aria-label="Close"], button[aria-label="close"]'
             ).first
@@ -131,7 +143,6 @@ class BrowserController:
                     time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
                 return
 
-            # If only Continue is visible, use Escape to avoid navigation
             cont = self._page.locator(
                 '[data-testid="select-button"]:has-text("Continue"), button:has-text("Continue")'
             ).first
@@ -148,19 +159,8 @@ class BrowserController:
             log.debug(f"    Apple locale modal: {e}")
 
     def _play_and_set_speed_apple(self):
-        """
-        Use Playwright's locator.click() — unlike btn.click() inside evaluate(),
-        Playwright clicks are trusted browser gestures that unblock autoplay.
-
-        Strategy:
-          1. Dismiss any locale/region modal
-          2. Try each play-button selector via Playwright locator.click()
-          3. Poll for <audio> element (appears once player initialises)
-          4. Call audio.play() + set playbackRate via JS
-        """
         self._dismiss_apple_locale_modal()
 
-        # Ordered list of selectors — Playwright locator clicks are trusted gestures
         play_selectors = [
             '[data-testid="button-base"]:has-text("Play")',
             'button:has-text("Play")',
@@ -186,7 +186,6 @@ class BrowserController:
             log.warning("    Apple: no play selector matched — dumping all buttons:")
             self._debug_dump_buttons()
 
-        # Poll for <audio> — reliable confirmation that the player has initialised
         log.info("    Apple: waiting for <audio> element...")
         if not self._wait_for_audio(timeout=15):
             log.warning("    Apple: <audio> not found after 15s — retrying click...")
@@ -211,11 +210,6 @@ class BrowserController:
     # ── Spotify ─────────────────────────────────────────────────────────────────
 
     def _play_and_set_speed_spotify(self):
-        """
-        Same strategy as Apple: click play to init the player,
-        then call audio.play() via JS.
-        Skips sidebar buttons (x < 200).
-        """
         log.info("    Spotify: clicking play button to initialize player...")
         result = self._page.evaluate("""
             () => {
@@ -255,12 +249,6 @@ class BrowserController:
     # ── JS audio control (core of the playback strategy) ───────────────────────
 
     def _js_play_and_set_speed(self):
-        """
-        Directly control the HTML5 <audio> element via JavaScript.
-        Works because Chromium is launched with:
-          --autoplay-policy=no-user-gesture-required
-        which allows audio.play() from JS without any user gesture.
-        """
         result = self._page.evaluate(f"""
             async () => {{
                 const audio = document.querySelector('audio');
@@ -302,7 +290,6 @@ class BrowserController:
     # ── Helpers ─────────────────────────────────────────────────────────────────
 
     def _wait_for_audio(self, timeout: int = 15) -> bool:
-        """Poll for <audio> element. Returns True when found."""
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._page.evaluate("() => !!document.querySelector('audio')"):
@@ -311,7 +298,6 @@ class BrowserController:
         return False
 
     def _debug_dump_buttons(self):
-        """Log all visible buttons to help diagnose missing play button."""
         buttons = self._page.evaluate("""
             () => [...document.querySelectorAll('button')].map(b => {
                 const r = b.getBoundingClientRect();

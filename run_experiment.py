@@ -1,18 +1,9 @@
-#!/usr/bin/env python3
-"""
-Podcast Energy Experiment - Main Runner
-Compares energy consumption of Spotify vs Apple Podcasts web players
-across Chrome/Firefox at 1x/2x playback speeds.
-"""
-
 import argparse
 import json
 import logging
-import os
-import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from config import CONFIGS, EXPERIMENT_SETTINGS
@@ -20,6 +11,7 @@ from browser_controller import BrowserController
 from energy_profiler import EnergyProfiler
 from results_manager import ResultsManager
 
+Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -71,32 +63,27 @@ def run_single_trial(config: dict, run_id: int, dry_run: bool, output_dir: str) 
     result = {
         "config": config_name,
         "run_id": run_id,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "success": False,
         "energy_data": None,
         "error": None,
     }
 
     try:
-        # 1. Launch browser and navigate / log in / set speed
         log.info("    Launching browser...")
         controller.setup()
 
-        # 2. Start energy profiling
         log.info("    Starting EnergyBridge...")
         energy_file = results_mgr.energy_filepath(config_name, run_id)
         profiler.start(energy_file)
 
-        # 3. Start playback
         log.info("    Starting playback...")
         controller.start_playback()
 
-        # 4. Record for the configured duration
         duration = EXPERIMENT_SETTINGS["measurement_duration_seconds"]
         log.info(f"    Recording for {duration}s...")
         time.sleep(duration)
 
-        # 5. Stop energy profiling
         log.info("    Stopping EnergyBridge...")
         energy_data = profiler.stop()
         result["energy_data"] = energy_data
@@ -115,7 +102,6 @@ def run_single_trial(config: dict, run_id: int, dry_run: bool, output_dir: str) 
 
     results_mgr.save_trial(result)
 
-    # Cool-down between runs
     cooldown = EXPERIMENT_SETTINGS["cooldown_seconds"]
     log.info(f"    Cooling down {cooldown}s...")
     time.sleep(cooldown)
@@ -126,7 +112,6 @@ def run_single_trial(config: dict, run_id: int, dry_run: bool, output_dir: str) 
 def main():
     args = parse_args()
 
-    Path("logs").mkdir(exist_ok=True)
     Path(args.output_dir).mkdir(exist_ok=True)
 
     configs_to_run = CONFIGS
@@ -153,7 +138,6 @@ def main():
         log.info(f"Config {config['name']} done: {successes}/{args.runs} successful")
         summary.append({"config": config["name"], "successes": successes, "runs": args.runs})
 
-    # Save summary
     summary_path = Path(args.output_dir) / "summary.json"
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)

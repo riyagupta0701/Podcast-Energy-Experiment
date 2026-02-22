@@ -1,23 +1,11 @@
-#!/usr/bin/env python3
-"""
-Analyze experiment results.
-Generates a CSV summary and ASCII/matplotlib box plots.
-
-Usage:
-    python analyze_results.py --input-dir results
-    python analyze_results.py --input-dir results --plot
-"""
-
 import argparse
 import csv
 import json
 import math
-import os
 from pathlib import Path
 
 
 def load_results(input_dir: str) -> dict[str, list[float]]:
-    """Load all trial JSON files and return energy readings per config."""
     data: dict[str, list[float]] = {}
     input_path = Path(input_dir)
 
@@ -65,10 +53,12 @@ def print_table(stats_by_config: dict):
     for config, s in stats_by_config.items():
         rows.append([
             config, s["n"], s["mean_J"], s["median_J"],
-            s["std_J"], s["min_J"], s["max_J"], s.get("cv_pct", "N/A"),
+            s["std_J"], s["min_J"], s["max_J"],
+            s["cv_pct"] if s.get("cv_pct") is not None else "N/A",
         ])
 
     col_widths = [max(len(str(r[i])) for r in rows + [headers]) + 2 for i in range(len(headers))]
+    rows = [[str(v) for v in row] for row in rows]
     fmt = "".join(f"{{:<{w}}}" for w in col_widths)
     sep = "-" * sum(col_widths)
 
@@ -90,7 +80,6 @@ def save_csv(stats_by_config: dict, output_path: str):
 
 
 def ascii_boxplot(values: list[float], width: int = 50) -> str:
-    """Render a simple ASCII box-and-whisker plot."""
     if not values:
         return "(no data)"
     sorted_v = sorted(values)
@@ -128,7 +117,7 @@ def plot_matplotlib(data: dict[str, list[float]], output_path: str):
         configs = list(data.keys())
         values_list = [data[c] for c in configs]
 
-        ax.boxplot(values_list, labels=configs, vert=True, patch_artist=True)
+        ax.boxplot(values_list, tick_labels=configs, vert=True, patch_artist=True)
         ax.set_ylabel("Energy (Joules)")
         ax.set_title("Podcast Web Player Energy Consumption by Configuration")
         plt.xticks(rotation=30, ha="right")

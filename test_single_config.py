@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-"""
-Quick single-trial smoke test.
-Use this to verify a configuration works before running all 30 × 8 trials.
-
-Usage:
-    python test_single_config.py --config chrome_spotify_1x --dry-run
-    python test_single_config.py --config firefox_apple_2x
-"""
-
 import argparse
 import logging
 import sys

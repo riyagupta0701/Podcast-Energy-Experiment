@@ -1,24 +1,5 @@
-#!/usr/bin/env python3
-"""
-One-time login script for Spotify.
-
-Run this ONCE before the experiment:
-    python login_session.py
-
-It opens a Chrome window for you to log in manually (Spotify blocks
-automated credential entry with CAPTCHAs). Once you are logged in,
-press Enter in the terminal and the session is saved to
-spotify_session.json. The experiment runner reuses this session
-for all 30 runs — no repeated logins.
-
-Usage:
-    python login_session.py [--browser chrome|firefox]
-"""
-
 import argparse
-import sys
 import time
-from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from config import SPOTIFY_SESSION_FILE
@@ -39,7 +20,6 @@ def login(browser_name: str = "chrome"):
         context = browser.new_context(viewport={"width": 1280, "height": 800})
         page = context.new_page()
 
-        # Open Spotify login page
         page.goto("https://accounts.spotify.com/login", wait_until="domcontentloaded")
         time.sleep(1)
 
@@ -53,14 +33,12 @@ def login(browser_name: str = "chrome"):
         print("=" * 60)
         input("\nPress Enter once you are fully logged in: ")
 
-        # Verify we are actually on open.spotify.com
         current_url = page.url
         if "open.spotify.com" not in current_url and "spotify.com" not in current_url:
             print(f"⚠ Current URL is: {current_url}")
             print("  Make sure you are on the Spotify web player before saving.")
             input("  Press Enter again when ready: ")
 
-        # Save the full browser session (cookies + localStorage)
         context.storage_state(path=SPOTIFY_SESSION_FILE)
         print(f"\n✓ Session saved to '{SPOTIFY_SESSION_FILE}'")
         print("  You can now run the experiment:")
