@@ -39,10 +39,23 @@ class BrowserController:
         self._playwright = sync_playwright().start()
 
         if self.browser_name == "chrome":
-            self._browser = self._playwright.chromium.launch(
+            self._context = self._playwright.chromium.launch_persistent_context(
+                user_data_dir=".pw-chrome-profile",
                 headless=False,
-                args=self._chromium_args(),
+                viewport={"width": 1280, "height": 800},
+                args=[
+                    *self._chromium_args(),
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                ],
             )
+            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+
+            log.info(f"    Navigating to: {self.url}")
+            self._page.goto(self.url, wait_until="domcontentloaded")
+            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
+            self._dismiss_cookies()
+            return
         # else:
         elif self.browser_name == "brave":
             import platform as _platform
