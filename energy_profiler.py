@@ -1,29 +1,3 @@
-"""
-EnergyBridge wrapper.
-
-EnergyBridge (https://github.com/tdurieux/energibridge) is a cross-platform
-energy measurement tool that wraps a command and records RAPL / IPMI power
-readings into a CSV file.
-
-Usage model here: we start EnergyBridge as a subprocess that runs for the
-measurement duration, writing to a CSV file. We then parse that CSV.
-
-EnergyBridge CLI:  energibridge --output <file> --max-execution <seconds> -- <command>
-
-When used in "measure a running process" mode we use:
-    energibridge --output <file> --interval <ms> --max-execution <sec> -- sleep <sec>
-
-This effectively records power for the given duration regardless of what
-else is happening on the system — which is the correct methodology for a
-web-player experiment (the power draw from the browser is captured as
-background system load).
-
-Platform notes:
-  - Linux:   requires Intel RAPL or powercap; run as root or set perf_event_paranoid=-1
-  - Windows: uses IPMI or HWiNFO64 backend (auto-detected by EnergyBridge)
-  - macOS:   uses powermetrics backend
-"""
-
 import csv
 import logging
 import os
@@ -37,13 +11,11 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Path to EnergyBridge binary — override with env var ENERGIBRIDGE_PATH
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
     "energibridge",   # assumed to be on PATH
 )
 
-# Sampling interval in milliseconds
 SAMPLE_INTERVAL_MS = int(os.getenv("ENERGIBRIDGE_INTERVAL_MS", "500"))
 
 
@@ -66,7 +38,6 @@ class EnergyProfiler:
             log.info("    [DRY-RUN] EnergyBridge skipped.")
             return
 
-        # EnergyBridge command: record for a long time; we stop it ourselves.
         cmd = [
             ENERGIBRIDGE_BIN,
             "--output", output_csv,
@@ -75,8 +46,6 @@ class EnergyProfiler:
             *self._idle_command(),
         ]
 
-        # On Linux/AMD, energy counters often require elevated privileges.
-        # Run only EnergyBridge with sudo (non-interactive) so the rest of the experiment stays unprivileged.
         if platform.system() == "Linux":
             cmd = ["sudo", "-n", *cmd]
 
@@ -87,7 +56,7 @@ class EnergyProfiler:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
-        time.sleep(0.5)   # give it a moment to initialise
+        time.sleep(0.5)
 
         if self._proc.poll() is not None:
             stderr = self._proc.stderr.read().decode()
@@ -101,7 +70,6 @@ class EnergyProfiler:
         if self._proc is None:
             return None
 
-        # Terminate EnergyBridge
         try:
             if platform.system() == "Windows":
                 self._proc.terminate()
@@ -117,12 +85,9 @@ class EnergyProfiler:
         finally:
             self._proc = None
 
-        # Parse CSV
         if self._output_file and Path(self._output_file).exists():
             return self._parse_csv(self._output_file)
         return None
-
-    # ── Parsing ─────────────────────────────────────────────────────────────────
 
     def _parse_csv(self, filepath: str) -> dict:
         """
@@ -146,16 +111,9 @@ class EnergyProfiler:
         headers = list(rows[0].keys())
         log.debug(f"    EnergyBridge CSV headers: {headers}")
 
-        # ── Step 1: find a power or energy column ─────────────────────────────
-        # EnergyBridge output varies by platform:
-        #   macOS:  "SYSTEM_POWER (Watts)"  — instantaneous power in Watts
-        #   Linux:  "PACKAGE_ENERGY (J)"    — cumulative energy in Joules
-        #   Others: various spellings
+        energy_col = None
+        power_col  = None
 
-        energy_col = None   # cumulative Joules column
-        power_col  = None   # instantaneous Watts column
-
-        # Explicit energy (Joules) candidates
         for candidate in ["PACKAGE_ENERGY (J)", "package_energy",
                           "Package Energy (J)", "CPU Energy (J)",
                           "energy", "total_energy"]:
@@ -163,7 +121,6 @@ class EnergyProfiler:
                 energy_col = candidate
                 break
 
-        # Explicit power (Watts) candidates — used when no energy col exists
         if energy_col is None:
             for candidate in ["SYSTEM_POWER (Watts)", "SYSTEM_POWER",
                               "CPU_POWER (Watts)", "CPU_POWER",
@@ -172,7 +129,6 @@ class EnergyProfiler:
                     power_col = candidate
                     break
 
-        # Fallback heuristics
         if energy_col is None and power_col is None:
             for h in headers:
                 hl = h.lower()
@@ -182,15 +138,12 @@ class EnergyProfiler:
                 if "power" in hl:
                     power_col = h
 
-        # ── Step 2: parse timestamps for Δt ───────────────────────────────────
-        # "Time" column is Unix epoch in milliseconds; "Delta" is ms since start
         duration_s  = None
-        delta_times = []   # per-sample Δt in seconds
+        delta_times = []
 
         if "Delta" in headers:
             try:
                 deltas_ms = [float(r["Delta"]) for r in rows if r.get("Delta")]
-                # Delta is cumulative ms — diff consecutive values for per-sample Δt
                 if len(deltas_ms) >= 2:
                     delta_times = [(deltas_ms[i+1] - deltas_ms[i]) / 1000.0
                                    for i in range(len(deltas_ms) - 1)]
@@ -207,18 +160,15 @@ class EnergyProfiler:
             except Exception:
                 pass
 
-        # Fallback: assume uniform sampling interval
         if not delta_times:
             interval_s = SAMPLE_INTERVAL_MS / 1000.0
             delta_times = [interval_s] * max(0, len(rows) - 1)
             duration_s  = interval_s * len(rows)
 
-        # ── Step 3: compute total energy ──────────────────────────────────────
         total_energy  = 0.0
         power_readings = []
 
         if energy_col:
-            # Cumulative Joules column — total = last - first
             values = []
             for row in rows:
                 try:
@@ -229,20 +179,17 @@ class EnergyProfiler:
                                         for i, v in enumerate(values[:-1])):
                 total_energy = values[-1] - values[0]
             else:
-                # Per-sample Joules — sum directly
                 total_energy = sum(values)
             power_readings = values
             used_col = energy_col
 
         elif power_col:
-            # Instantaneous Watts × Δt → Joules per sample, then sum
             power_vals = []
             for row in rows:
                 try:
                     power_vals.append(float(row[power_col]))
                 except (ValueError, KeyError):
                     pass
-            # pair each power reading with the Δt that follows it
             n_pairs = min(len(power_vals), len(delta_times))
             total_energy = sum(power_vals[i] * delta_times[i]
                                for i in range(n_pairs))
@@ -263,8 +210,6 @@ class EnergyProfiler:
             ),
             "raw_power_readings": power_readings[:5],
         }
-
-    # ── Helpers ─────────────────────────────────────────────────────────────────
 
     @staticmethod
     def _idle_command():

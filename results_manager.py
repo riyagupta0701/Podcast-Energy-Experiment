@@ -1,8 +1,3 @@
-"""
-Results persistence: saves individual trial JSON files and
-aggregates them for analysis.
-"""
-
 import json
 import logging
 from pathlib import Path

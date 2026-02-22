@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-"""
-Analyze experiment results.
-Generates a CSV summary and ASCII/matplotlib box plots.
-
-Usage:
-    python analyze_results.py --input-dir results
-    python analyze_results.py --input-dir results --plot
-"""
-
 import argparse
 import csv
 import json
@@ -16,7 +6,6 @@ from pathlib import Path
 
 
 def load_results(input_dir: str) -> dict[str, list[float]]:
-    """Load all trial JSON files and return energy readings per config."""
     data: dict[str, list[float]] = {}
     input_path = Path(input_dir)
 
@@ -69,7 +58,6 @@ def print_table(stats_by_config: dict):
         ])
 
     col_widths = [max(len(str(r[i])) for r in rows + [headers]) + 2 for i in range(len(headers))]
-    # ensure all row values are strings so format() doesn't choke on None
     rows = [[str(v) for v in row] for row in rows]
     fmt = "".join(f"{{:<{w}}}" for w in col_widths)
     sep = "-" * sum(col_widths)
@@ -92,7 +80,6 @@ def save_csv(stats_by_config: dict, output_path: str):
 
 
 def ascii_boxplot(values: list[float], width: int = 50) -> str:
-    """Render a simple ASCII box-and-whisker plot."""
     if not values:
         return "(no data)"
     sorted_v = sorted(values)
