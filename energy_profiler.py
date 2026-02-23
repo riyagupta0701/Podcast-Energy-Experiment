@@ -11,16 +11,10 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-def _default_energibridge_bin() -> str:
-    env = os.getenv("ENERGIBRIDGE_PATH")
-    if env:
-        return env
-    for name in ["energibridge", "energybridge"]:
-        if shutil.which(name):
-            return name
-    return "energybridge"
-
-ENERGIBRIDGE_BIN = _default_energibridge_bin()
+ENERGIBRIDGE_BIN = os.getenv(
+    "ENERGIBRIDGE_PATH",
+    "energibridge",   # assumed to be on PATH
+)
 
 SAMPLE_INTERVAL_MS = int(os.getenv("ENERGIBRIDGE_INTERVAL_MS", "500"))
 
