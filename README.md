@@ -233,9 +233,11 @@ The `Delta` column (cumulative ms since start) is used to compute per-sample Δt
 | Setting | Default | Description |
 |---|---|---|
 | `runs_per_config` | 30 | Trials per configuration |
-| `measurement_duration_seconds` | 45 | Active playback duration per trial |
+| `measurement_duration_seconds` | 90 | Active playback duration per trial |
 | `cooldown_seconds` | 30 | Idle pause between runs |
+| `browser_startup_wait` | 5 | Seconds after browser opens |
 | `page_load_wait` | 10 | Seconds to wait after navigation |
+| `playback_start_wait` | 3 | Seconds to wait after clicking play |
 
 ### Confounds to control
 
