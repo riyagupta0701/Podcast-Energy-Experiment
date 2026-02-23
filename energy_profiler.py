@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
-    "energibridge",   # assumed to be on PATH
+    "energybridge",   # assumed to be on PATH
 )
 
 SAMPLE_INTERVAL_MS = int(os.getenv("ENERGIBRIDGE_INTERVAL_MS", "500"))
