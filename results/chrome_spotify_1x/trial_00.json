@@ -1,0 +1,21 @@
+{
+  "config": "chrome_spotify_1x",
+  "run_id": 0,
+  "timestamp": "2026-02-22T20:18:09.268012+00:00",
+  "success": true,
+  "energy_data": {
+    "samples": 184,
+    "total_energy_joules": 43.7007,
+    "energy_column_used": "CORE0_ENERGY (J)",
+    "duration_seconds": 0.0,
+    "mean_power_watts": 43700.6683,
+    "raw_power_readings": [
+      1333.3583526611328,
+      1333.3583679199219,
+      1333.4098663330078,
+      1333.725082397461,
+      1334.098617553711
+    ]
+  },
+  "error": null
+}
