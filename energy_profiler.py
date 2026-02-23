@@ -18,7 +18,7 @@ def _default_energibridge_bin() -> str:
     for name in ["energibridge", "energybridge"]:
         if shutil.which(name):
             return name
-    return "energibridge"
+    return "energybridge"
 
 ENERGIBRIDGE_BIN = _default_energibridge_bin()
 
