@@ -56,7 +56,6 @@ class BrowserController:
             time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
             self._dismiss_cookies()
             return
-        # else:
         elif self.browser_name == "brave":
             import platform as _platform
             import os as _os
