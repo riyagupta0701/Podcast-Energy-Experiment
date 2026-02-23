@@ -36,30 +36,28 @@ class BrowserController:
     # ── Public API ──────────────────────────────────────────────────────────────
 
     def setup(self):
+        import json
+        import platform as _platform
+        import os as _os
+        import shutil as _shutil
+
         self._playwright = sync_playwright().start()
+
+        context_args = {
+            "headless": False,
+            "viewport": {"width": 1280, "height": 800},
+            "args": [
+                *self._chromium_args(),
+                "--no-default-browser-check",
+            ]
+        }
 
         if self.browser_name == "chrome":
             self._context = self._playwright.chromium.launch_persistent_context(
                 user_data_dir=".pw-chrome-profile",
-                headless=False,
-                viewport={"width": 1280, "height": 800},
-                args=[
-                    *self._chromium_args(),
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                ],
+                **context_args
             )
-            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
-
-            log.info(f"    Navigating to: {self.url}")
-            self._page.goto(self.url, wait_until="domcontentloaded")
-            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
-            self._dismiss_cookies()
-            return
-        # else:
         elif self.browser_name == "brave":
-            import platform as _platform
-            import os as _os
             system = _platform.system()
             if system == "Darwin":
                 brave_exe = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
@@ -68,42 +66,43 @@ class BrowserController:
                     r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"
                 )
             else:
-                brave_exe = "/usr/bin/brave-browser"
+                brave_exe = _shutil.which("brave-browser") or _shutil.which("brave")
+                if not brave_exe:
+                    brave_exe = "/usr/bin/brave-browser" if _os.path.exists("/usr/bin/brave-browser") else "/usr/bin/brave"
 
-            brave_profile = ".pw-brave-profile"
+            context_args["executable_path"] = brave_exe
             self._context = self._playwright.chromium.launch_persistent_context(
-                user_data_dir=brave_profile,
-                executable_path=brave_exe,
-                headless=False,
-                viewport={"width": 1280, "height": 800},
-                args=[
-                    *self._chromium_args(),
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                ],
+                user_data_dir=".pw-brave-profile",
+                **context_args
             )
 
-            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+        self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
 
-            log.info(f"    Navigating to: {self.url}")
-            self._page.goto(self.url, wait_until="domcontentloaded")
-            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
-            self._dismiss_cookies()
-            return
-        
-        context_opts = {"viewport": {"width": 1280, "height": 800}}
         if self.platform == "spotify":
             session_path = Path(SPOTIFY_SESSION_FILE)
             if not session_path.exists():
-                raise FileNotFoundError(
-                    f"'{SPOTIFY_SESSION_FILE}' not found. Run: python login_session.py"
-                )
-            context_opts["storage_state"] = str(session_path)
-            log.info(f"    Loaded Spotify session from '{SPOTIFY_SESSION_FILE}'.")
+                raise FileNotFoundError(f"'{SPOTIFY_SESSION_FILE}' not found. Run: python login_session.py")
+            
+            with open(session_path, "r") as f:
+                state = json.load(f)
+            
+            # Inject cookies
+            if "cookies" in state:
+                self._context.add_cookies(state["cookies"])
+            
+            # Inject localStorage
+            if "origins" in state:
+                self._page.goto("https://open.spotify.com", wait_until="commit")
+                for origin_data in state["origins"]:
+                    for item in origin_data["localStorage"]:
+                        self._page.evaluate(
+                            "([key, value]) => window.localStorage.setItem(key, value)",
+                            [item['name'], item['value']]
+                        )
+            
+            log.info(f"    Injected Spotify session from '{SPOTIFY_SESSION_FILE}'.")
 
-        self._context = self._browser.new_context(**context_opts)
-        self._page = self._context.new_page()
-
+        # Navigate to the actual episode URL
         log.info(f"    Navigating to: {self.url}")
         self._page.goto(self.url, wait_until="domcontentloaded")
         time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
