@@ -29,7 +29,7 @@ spotify_session.json
 # ===============================
 # results/
 results_test/
-*.csv
+# *.csv
 *.log
 *.jsonl
 
