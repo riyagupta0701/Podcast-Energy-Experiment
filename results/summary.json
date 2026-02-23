@@ -1,42 +1,42 @@
 [
   {
     "config": "chrome_spotify_1x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "chrome_spotify_2x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "brave_spotify_1x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "brave_spotify_2x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "chrome_apple_1x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "chrome_apple_2x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "brave_apple_1x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   },
   {
     "config": "brave_apple_2x",
-    "successes": 30,
-    "runs": 30
+    "successes": 2,
+    "runs": 2
   }
 ]
