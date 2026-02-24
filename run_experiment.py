@@ -120,7 +120,7 @@ def main():
             log.error(f"Config '{args.config}' not found. Available: {[c['name'] for c in CONFIGS]}")
             sys.exit(1)
 
-    log.info(f"Starting experiment: {len(configs_to_run)} config(s) × {args.runs} runs each")
+    log.info(f"Starting experiment: {len(configs_to_run)} config(s) x {args.runs} runs each")
 
     summary = []
     for config in configs_to_run:
@@ -142,7 +142,7 @@ def main():
         json.dump(summary, f, indent=2)
 
     log.info(f"\nExperiment complete. Results in '{args.output_dir}/'")
-    log.info(f"Run: python analyze_results.py --input-dir {args.output_dir}")
+    log.info(f"Run: python report_data_analysis.py --input-dir {args.output_dir}")
 
 
 if __name__ == "__main__":

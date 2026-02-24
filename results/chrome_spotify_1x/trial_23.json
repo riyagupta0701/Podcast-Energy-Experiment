@@ -5,16 +5,16 @@
   "success": true,
   "energy_data": {
     "samples": 184,
-    "total_energy_joules": 43.1379,
-    "energy_column_used": "CORE0_ENERGY (J)",
-    "duration_seconds": 0.0,
-    "mean_power_watts": 43137.8632,
+    "total_energy_joules": 729.491,
+    "energy_column_used": "CPU_ENERGY (J)",
+    "duration_seconds": 91.06,
+    "mean_power_watts": 8.0113,
     "raw_power_readings": [
-      2395.838104248047,
-      2395.838165283203,
-      2395.9430541992188,
-      2396.168243408203,
-      2396.507308959961
+      82099.3041381836,
+      82099.3117980957,
+      82101.99948120117,
+      82106.07083129883,
+      82110.86210632324
     ]
   },
   "error": null
