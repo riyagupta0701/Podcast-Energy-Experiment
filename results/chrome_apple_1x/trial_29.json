@@ -1,0 +1,21 @@
+{
+  "config": "chrome_apple_1x",
+  "run_id": 29,
+  "timestamp": "2026-02-23T01:51:09.025455+00:00",
+  "success": true,
+  "energy_data": {
+    "samples": 186,
+    "total_energy_joules": 6.1691,
+    "energy_column_used": "CORE0_ENERGY (J)",
+    "duration_seconds": 0.0,
+    "mean_power_watts": 6169.0674,
+    "raw_power_readings": [
+      7071.122985839844,
+      7071.123046875,
+      7071.168472290039,
+      7071.396667480469,
+      7071.890731811523
+    ]
+  },
+  "error": null
+}
