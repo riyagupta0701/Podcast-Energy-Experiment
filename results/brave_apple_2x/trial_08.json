@@ -1,20 +1,20 @@
 {
   "config": "brave_apple_2x",
   "run_id": 8,
-  "timestamp": "2026-02-23T04:25:50.101035+00:00",
+  "timestamp": "2026-02-24T06:45:13.068326+00:00",
   "success": true,
   "energy_data": {
-    "samples": 186,
-    "total_energy_joules": 5.2852,
-    "energy_column_used": "CORE0_ENERGY (J)",
-    "duration_seconds": 0.0,
-    "mean_power_watts": 5285.2173,
+    "samples": 188,
+    "total_energy_joules": 22289988.7054,
+    "energy_column_used": "PACKAGE_ENERGY (J)",
+    "duration_seconds": null,
+    "mean_power_watts": null,
     "raw_power_readings": [
-      7657.484786987305,
-      7657.485397338867,
-      7657.510269165039,
-      7657.652206420898,
-      7658.080413818359
+      261287.82934570312,
+      261287.83697509766,
+      261291.88891601562,
+      261311.41180419922,
+      261343.06756591797
     ]
   },
   "error": null

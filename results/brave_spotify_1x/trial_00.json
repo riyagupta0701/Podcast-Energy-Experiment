@@ -1,21 +1,8 @@
 {
   "config": "brave_spotify_1x",
   "run_id": 0,
-  "timestamp": "2026-02-23T22:16:39.661621+00:00",
-  "success": true,
-  "energy_data": {
-    "samples": 187,
-    "total_energy_joules": 1738.761,
-    "energy_column_used": "PACKAGE_ENERGY (J)",
-    "duration_seconds": null,
-    "mean_power_watts": null,
-    "raw_power_readings": [
-      19269.418823242188,
-      19269.418823242188,
-      19282.231384277344,
-      19294.846069335938,
-      19307.17608642578
-    ]
-  },
-  "error": null
+  "timestamp": "2026-02-24T00:51:40.500677+00:00",
+  "success": false,
+  "energy_data": null,
+  "error": "Page.evaluate: Execution context was destroyed, most likely because of a navigation"
 }

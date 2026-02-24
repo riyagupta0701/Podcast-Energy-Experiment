@@ -1,20 +1,20 @@
 {
   "config": "chrome_apple_2x",
   "run_id": 8,
-  "timestamp": "2026-02-23T02:11:19.939843+00:00",
+  "timestamp": "2026-02-24T04:30:24.256339+00:00",
   "success": true,
   "energy_data": {
-    "samples": 186,
-    "total_energy_joules": 5.7789,
-    "energy_column_used": "CORE0_ENERGY (J)",
-    "duration_seconds": 0.0,
-    "mean_power_watts": 5778.9459,
+    "samples": 188,
+    "total_energy_joules": 1649.5049,
+    "energy_column_used": "PACKAGE_ENERGY (J)",
+    "duration_seconds": null,
+    "mean_power_watts": null,
     "raw_power_readings": [
-      7138.4298095703125,
-      7138.4300537109375,
-      7138.486679077148,
-      7138.63249206543,
-      7139.03840637207
+      143192.1219482422,
+      143192.1219482422,
+      143196.5541381836,
+      143226.54760742188,
+      143260.44464111328
     ]
   },
   "error": null

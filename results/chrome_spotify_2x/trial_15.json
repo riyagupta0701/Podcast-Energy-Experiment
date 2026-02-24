@@ -1,20 +1,20 @@
 {
   "config": "chrome_spotify_2x",
   "run_id": 15,
-  "timestamp": "2026-02-22T21:58:35.118798+00:00",
+  "timestamp": "2026-02-24T00:18:03.192701+00:00",
   "success": true,
   "energy_data": {
     "samples": 184,
-    "total_energy_joules": 43.0265,
-    "energy_column_used": "CORE0_ENERGY (J)",
-    "duration_seconds": 0.0,
-    "mean_power_watts": 43026.474,
+    "total_energy_joules": 2267.8674,
+    "energy_column_used": "PACKAGE_ENERGY (J)",
+    "duration_seconds": null,
+    "mean_power_watts": null,
     "raw_power_readings": [
-      3417.679885864258,
-      3417.679962158203,
-      3417.725799560547,
-      3418.040740966797,
-      3418.4277954101562
+      173686.45416259766,
+      173686.45416259766,
+      173698.81170654297,
+      173709.10986328125,
+      173723.3973388672
     ]
   },
   "error": null
