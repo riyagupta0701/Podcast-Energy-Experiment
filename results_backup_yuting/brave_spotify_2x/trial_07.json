@@ -1,0 +1,21 @@
+{
+  "config": "brave_spotify_2x",
+  "run_id": 7,
+  "timestamp": "2026-02-24T02:13:35.697434+00:00",
+  "success": true,
+  "energy_data": {
+    "samples": 184,
+    "total_energy_joules": 1166.7258,
+    "energy_column_used": "PACKAGE_ENERGY (J)",
+    "duration_seconds": null,
+    "mean_power_watts": null,
+    "raw_power_readings": [
+      27852.600952148438,
+      27852.600952148438,
+      27865.050903320312,
+      27877.118041992188,
+      27889.89990234375
+    ]
+  },
+  "error": null
+}

@@ -2,6 +2,9 @@ import logging
 import time
 from pathlib import Path
 
+import re
+from playwright.sync_api import TimeoutError as PWTimeout
+
 from playwright.sync_api import sync_playwright
 
 from config import EXPERIMENT_SETTINGS, SPOTIFY_SESSION_FILE
@@ -18,6 +21,9 @@ COOKIE_SELECTORS = [
     'button:has-text("Agree")',
     'button:has-text("OK")',
 ]
+
+SPEED_LABEL_RE = re.compile(r"^\s*\d+(?:\.\d+)?x\s*$", re.I)
+
 
 
 class BrowserController:
@@ -36,29 +42,28 @@ class BrowserController:
     # ── Public API ──────────────────────────────────────────────────────────────
 
     def setup(self):
+        import json
+        import platform as _platform
+        import os as _os
+        import shutil as _shutil
+
         self._playwright = sync_playwright().start()
+
+        context_args = {
+            "headless": False,
+            "viewport": {"width": 1280, "height": 800},
+            "args": [
+                *self._chromium_args(),
+                "--no-default-browser-check",
+            ]
+        }
 
         if self.browser_name == "chrome":
             self._context = self._playwright.chromium.launch_persistent_context(
                 user_data_dir=".pw-chrome-profile",
-                headless=False,
-                viewport={"width": 1280, "height": 800},
-                args=[
-                    *self._chromium_args(),
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                ],
+                **context_args
             )
-            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
-
-            log.info(f"    Navigating to: {self.url}")
-            self._page.goto(self.url, wait_until="domcontentloaded")
-            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
-            self._dismiss_cookies()
-            return
         elif self.browser_name == "brave":
-            import platform as _platform
-            import os as _os
             system = _platform.system()
             if system == "Darwin":
                 brave_exe = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
@@ -67,42 +72,43 @@ class BrowserController:
                     r"%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe"
                 )
             else:
-                brave_exe = "/usr/bin/brave-browser"
+                brave_exe = _shutil.which("brave-browser") or _shutil.which("brave")
+                if not brave_exe:
+                    brave_exe = "/usr/bin/brave-browser" if _os.path.exists("/usr/bin/brave-browser") else "/usr/bin/brave"
 
-            brave_profile = ".pw-brave-profile"
+            context_args["executable_path"] = brave_exe
             self._context = self._playwright.chromium.launch_persistent_context(
-                user_data_dir=brave_profile,
-                executable_path=brave_exe,
-                headless=False,
-                viewport={"width": 1280, "height": 800},
-                args=[
-                    *self._chromium_args(),
-                    "--no-first-run",
-                    "--no-default-browser-check",
-                ],
+                user_data_dir=".pw-brave-profile",
+                **context_args
             )
 
-            self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
+        self._page = self._context.pages[0] if self._context.pages else self._context.new_page()
 
-            log.info(f"    Navigating to: {self.url}")
-            self._page.goto(self.url, wait_until="domcontentloaded")
-            time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
-            self._dismiss_cookies()
-            return
-        
-        context_opts = {"viewport": {"width": 1280, "height": 800}}
         if self.platform == "spotify":
             session_path = Path(SPOTIFY_SESSION_FILE)
             if not session_path.exists():
-                raise FileNotFoundError(
-                    f"'{SPOTIFY_SESSION_FILE}' not found. Run: python login_session.py"
-                )
-            context_opts["storage_state"] = str(session_path)
-            log.info(f"    Loaded Spotify session from '{SPOTIFY_SESSION_FILE}'.")
+                raise FileNotFoundError(f"'{SPOTIFY_SESSION_FILE}' not found. Run: python login_session.py")
+            
+            with open(session_path, "r") as f:
+                state = json.load(f)
+            
+            # Inject cookies
+            if "cookies" in state:
+                self._context.add_cookies(state["cookies"])
+            
+            # Inject localStorage
+            if "origins" in state:
+                self._page.goto("https://open.spotify.com", wait_until="commit")
+                for origin_data in state["origins"]:
+                    for item in origin_data["localStorage"]:
+                        self._page.evaluate(
+                            "([key, value]) => window.localStorage.setItem(key, value)",
+                            [item['name'], item['value']]
+                        )
+            
+            log.info(f"    Injected Spotify session from '{SPOTIFY_SESSION_FILE}'.")
 
-        self._context = self._browser.new_context(**context_opts)
-        self._page = self._context.new_page()
-
+        # Navigate to the actual episode URL
         log.info(f"    Navigating to: {self.url}")
         self._page.goto(self.url, wait_until="domcontentloaded")
         time.sleep(EXPERIMENT_SETTINGS["page_load_wait"])
@@ -186,77 +192,64 @@ class BrowserController:
             self._debug_dump_buttons()
 
         log.info("    Apple: waiting for <audio> element...")
-        if not self._wait_for_audio(timeout=15):
-            log.warning("    Apple: <audio> not found after 15s — retrying click...")
-            self._dismiss_apple_locale_modal()
-            for sel in play_selectors:
-                try:
-                    loc = self._page.locator(sel).first
-                    loc.wait_for(state="visible", timeout=3_000)
-                    loc.click()
-                    log.info(f"    Apple: retry click via '{sel}'.")
-                    break
-                except Exception:
-                    continue
-            self._wait_for_audio(timeout=10)
+       
+        # after play click + a short wait for controls
+        self._page.wait_for_timeout(800)
 
-        if self._page.evaluate("() => !!document.querySelector('audio')"):
-            log.info("    Apple: <audio> found — calling audio.play() via JS...")
-            self._js_play_and_set_speed()
-        else:
-            log.warning("    Apple: <audio> still not present. Check browser window.")
+        ok = self._set_apple_speed_via_ui(self.speed)
+        if not ok:
+            log.warning("Apple: failed to set speed via UI.")
 
     # ── Spotify ─────────────────────────────────────────────────────────────────
 
     def _play_and_set_speed_spotify(self):
-        log.info("    Spotify: clicking play button to initialize player...")
-        result = self._page.evaluate("""
-            () => {
-                const candidates = [...document.querySelectorAll(
-                    '[data-testid="play-button"], button[aria-label^="Play"]'
-                )];
-                for (const btn of candidates) {
-                    const r = btn.getBoundingClientRect();
-                    if (r.width === 0 || r.height === 0) continue;
-                    if (r.x < 200) continue;  // skip sidebar
-                    btn.scrollIntoView({block: 'center'});
-                    btn.click();
-                    return {aria: btn.getAttribute('aria-label'),
-                            testid: btn.getAttribute('data-testid'),
-                            x: Math.round(r.x), y: Math.round(r.y),
-                            w: Math.round(r.width), h: Math.round(r.height)};
-                }
-                return null;
-            }
+        log.info("    Spotify: ensure playback is started (click Play if needed)...")
+
+        # Only click if we see a Play button
+        clicked = self._page.evaluate("""
+        () => {
+            const btns = [...document.querySelectorAll('button')];
+            // Prefer the control bar play button
+            const play = btns.find(b => (b.getAttribute('aria-label') || '').trim() === 'Play');
+            if (play) { play.click(); return 'clicked_play'; }
+            return 'no_play_button';
+        }
         """)
+        log.info(f"    Spotify: {clicked}")
 
-        if result:
-            log.info(f"    Spotify: clicked '{result['aria'] or result['testid']}' at "
-                     f"({result['x']}, {result['y']}) size={result['w']}×{result['h']}")
-        else:
-            log.warning("    Spotify: no play button found outside sidebar — dumping buttons:")
-            self._debug_dump_buttons()
+        # Time to render the speed control
+        self._page.wait_for_timeout(800)
 
-        log.info("    Spotify: waiting for <audio> element...")
-        if not self._wait_for_audio(timeout=15):
-            log.warning("    Spotify: <audio> not found. Session may be expired.")
-            log.warning("    Re-run: python login_session.py")
-
-        log.info("    Spotify: calling audio.play() via JS...")
-        self._js_play_and_set_speed()
+        ok = self._set_spotify_speed_via_ui_in_player_bar(self.speed)
+        if not ok:
+            log.warning("    Spotify: failed to set speed via UI.")
 
     # ── JS audio control (core of the playback strategy) ───────────────────────
 
     def _js_play_and_set_speed(self):
-        result = self._page.evaluate(f"""
-            async () => {{
-                const audio = document.querySelector('audio');
-                if (!audio) return 'no_audio';
+        media_loc = None
+        
+        # Find the media element using Playwright
+        if self._page.locator("audio, video").count() > 0:
+            media_loc = self._page.locator("audio, video").first
+        else:
+            for frame in self._page.frames:
+                if frame.locator("audio, video").count() > 0:
+                    media_loc = frame.locator("audio, video").first
+                    break
 
-                audio.playbackRate = {self.speed};
+        if not media_loc:
+            log.warning("    media.play(): no <audio> or <video> element found.")
+            return
 
+        result = media_loc.evaluate(f"""
+            async (media) => {{
+                // Set the speed
+                media.playbackRate = {self.speed};
+
+                // Ensure it is playing
                 try {{
-                    await audio.play();
+                    await media.play();
                     return 'playing';
                 }} catch (e) {{
                     return 'error: ' + e.message;
@@ -265,11 +258,10 @@ class BrowserController:
         """)
 
         if result == "playing":
-            log.info(f"    audio.play() succeeded. Speed={self.speed}x. Playback is running.")
-        elif result == "no_audio":
-            log.warning("    audio.play(): no <audio> element found.")
+            log.info(f"    media.play() succeeded. Speed={self.speed}x. Playback is running.")
         else:
-            log.warning(f"    audio.play() result: {result}")
+            log.warning(f"    media.play() result: {result}")
+
 
     # ── Cookie dismissal ────────────────────────────────────────────────────────
 
@@ -291,8 +283,14 @@ class BrowserController:
     def _wait_for_audio(self, timeout: int = 15) -> bool:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self._page.evaluate("() => !!document.querySelector('audio')"):
+            if self._page.locator("audio, video").count() > 0:
                 return True
+                
+            # Check frames just in case
+            for frame in self._page.frames:
+                if frame.locator("audio, video").count() > 0:
+                    return True
+                    
             time.sleep(0.5)
         return False
 
@@ -315,6 +313,367 @@ class BrowserController:
                         f"aria='{b['aria']}' "
                         f"testid='{b['testid']}' "
                         f"text='{b['text']}'")
+
+
+    def _set_apple_speed_via_ui(self, target_speed: float, timeout_ms: int = 12000) -> bool:
+        page = self._page
+        target_label = f"{target_speed:g}x"
+
+        def norm(s: str) -> str:
+            return (s or "").strip().lower().replace("×", "x").replace(" ", "")
+
+        speed_re = re.compile(r"^\d+(?:\.\d+)?[x×]$", re.I)
+
+        # --- Find current "Nx" label ---
+        deadline = time.time() + timeout_ms / 1000
+        current = None
+
+        while time.time() < deadline:
+            current = page.evaluate("""
+            () => {
+                const norm = s => (s||'').replace(/\\s+/g,' ').trim();
+
+                // Apple Podcasts playback controls area tends to contain the speed control.
+                // Try a few plausible roots first to avoid matching random "2x" in content.
+                const roots = [
+                document.querySelector('.web-chrome-playback-controls'),
+                document.querySelector('[data-testid*="playback" i]'),
+                document.querySelector('footer'),
+                document.body
+                ].filter(Boolean);
+
+                function findSpeed(root){
+                const all = root.querySelectorAll('*');
+                for (const el of all) {
+                    const t = norm(el.textContent);
+                    if (/^\\d+(?:\\.\\d+)?[x×]$/i.test(t)) {
+                    const r = el.getBoundingClientRect?.();
+                    if (r && r.width > 2 && r.height > 2) return t;
+                    }
+                }
+                return null;
+                }
+
+                for (const r of roots) {
+                const t = findSpeed(r);
+                if (t) return t;
+                }
+                return null;
+            }
+            """)
+            if current and speed_re.match(current):
+                break
+            page.wait_for_timeout(250)
+
+        if not current:
+            log.warning("Apple UI speed: no 'Nx' label found near playback controls.")
+            return False
+
+        if norm(current) == norm(target_label):
+            log.info(f"Apple UI speed: already at {target_label}.")
+            return True
+
+        # --- Click the current speed label to open the menu ---
+        clicked = page.evaluate("""
+        (label) => {
+            const norm = s => (s||'').replace(/\\s+/g,' ').trim();
+            const roots = [
+            document.querySelector('.web-chrome-playback-controls'),
+            document.querySelector('[data-testid*="playback" i]'),
+            document.querySelector('footer'),
+            document.body
+            ].filter(Boolean);
+
+            function clickWithin(root){
+            const all = Array.from(root.querySelectorAll('*'));
+            const matches = all.filter(el => norm(el.textContent) === label);
+            if (!matches.length) return false;
+
+            matches.sort((a,b) => b.getBoundingClientRect().y - a.getBoundingClientRect().y);
+            const el = matches[0];
+
+            // Climb to a clickable element
+            let cur = el;
+            for (let i=0; i<6 && cur; i++){
+                const cs = getComputedStyle(cur);
+                const clickable =
+                cur.tagName?.toLowerCase() === 'button' ||
+                cur.getAttribute?.('role') === 'button' ||
+                cs.cursor === 'pointer' ||
+                cur.onclick ||
+                cur.tabIndex === 0;
+                const r = cur.getBoundingClientRect();
+                const visible = r.width>2 && r.height>2;
+                if (clickable && visible) { cur.click(); return true; }
+                cur = cur.parentElement;
+            }
+            el.click();
+            return true;
+            }
+
+            for (const r of roots) if (clickWithin(r)) return true;
+            return false;
+        }
+        """, current)
+
+        if not clicked:
+            log.warning(f"Apple UI speed: found '{current}' but couldn't click it.")
+            return False
+
+        page.wait_for_timeout(200)
+
+        # --- Click the target option (scroll inside the menu) ---
+        ok = self._click_speed_option_in_open_menu(target_label)
+        if ok:
+            log.info(f"Apple UI speed: set to {target_label}.")
+            return True
+
+        log.warning(f"Apple UI speed: menu opened but option '{target_label}' not found/clickable.")
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return False
+
+
+    def _click_speed_option_in_open_menu(self, target_label: str) -> bool:
+        page = self._page
+
+        def norm(s: str) -> str:
+            return (s or "").strip().lower().replace("×", "x").replace(" ", "")
+
+        want = norm(target_label)
+
+        # Try to locate a menu
+        menu = page.locator('[role="menu"], [role="dialog"], [data-testid*="popover" i], [data-testid*="menu" i]').first
+
+        def try_click() -> bool:
+            # Look for any element whose visible text is exactly "Nx"
+            loc = page.locator("text=/^\\s*\\d+(?:\\.\\d+)?[x×]\\s*$/i")
+            try:
+                n = loc.count()
+            except Exception:
+                n = 0
+            for i in range(min(n, 200)):
+                el = loc.nth(i)
+                try:
+                    if not el.is_visible():
+                        continue
+                    if norm(el.inner_text()) == want:
+                        el.click()
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        # No-scroll attempt
+        if try_click():
+            return True
+
+        # Scroll inside the menu if possible
+        for _ in range(14):  # scroll up
+            try:
+                if menu.is_visible(timeout=200):
+                    menu.evaluate("el => { el.scrollTop = Math.max(0, el.scrollTop - el.clientHeight * 0.9); }")
+                else:
+                    break
+            except Exception:
+                break
+            page.wait_for_timeout(120)
+            if try_click():
+                return True
+
+        for _ in range(14):  # scroll down
+            try:
+                if menu.is_visible(timeout=200):
+                    menu.evaluate("el => { el.scrollTop = el.scrollTop + el.clientHeight * 0.9; }")
+                else:
+                    break
+            except Exception:
+                break
+            page.wait_for_timeout(120)
+            if try_click():
+                return True
+
+        return False
+
+
+    def _set_spotify_speed_via_ui_in_player_bar(self, target_speed: float, timeout_ms: int = 12000) -> bool:
+        page = self._page
+        target_label = f"{target_speed:g}x"
+
+        def norm_label(s: str) -> str:
+            return (s or "").strip().lower().replace("×", "x").replace(" ", "")
+
+        label_re = re.compile(r"^\d+(?:\.\d+)?[x×]$", re.I)
+
+        deadline = time.time() + timeout_ms / 1000
+
+        # Find the speed control
+        while time.time() < deadline:
+            current = page.evaluate("""
+            () => {
+                const norm = s => (s||'').replace(/\\s+/g,' ').trim();
+                const playerRoots = [
+                document.querySelector('[data-testid="now-playing-bar"]'),
+                document.querySelector('footer'),
+                // fallback: last fixed region near bottom
+                [...document.querySelectorAll('*')].reverse().find(el => {
+                    const cs = getComputedStyle(el);
+                    if (!cs) return false;
+                    if (cs.position !== 'fixed' && cs.position !== 'sticky') return false;
+                    const r = el.getBoundingClientRect();
+                    return r.height > 60 && r.y > window.innerHeight * 0.6;
+                })
+                ].filter(Boolean);
+
+                function findSpeedEl(root){
+                const all = root.querySelectorAll('*');
+                for (const el of all) {
+                    const t = norm(el.textContent);
+                    if (/^\\d+(?:\\.\\d+)?[x×]$/i.test(t)) {
+                    const r = el.getBoundingClientRect();
+                    if (r.width > 2 && r.height > 2) return t;
+                    }
+                }
+                return null;
+                }
+
+                for (const root of playerRoots) {
+                const t = findSpeedEl(root);
+                if (t) return t;
+                }
+                return null;
+            }
+            """)
+            if current:
+                current_n = norm_label(current)
+                if label_re.match(current):
+                    if current_n == norm_label(target_label):
+                        log.info(f"Spotify UI speed: already at {target_label}.")
+                        return True
+
+                    # Click the current speed label
+                    clicked = page.evaluate("""
+                    (label) => {
+                        const norm = s => (s||'').replace(/\\s+/g,' ').trim();
+                        const roots = [
+                        document.querySelector('[data-testid="now-playing-bar"]'),
+                        document.querySelector('footer'),
+                        ].filter(Boolean);
+
+                        function clickWithin(root){
+                        const all = Array.from(root.querySelectorAll('*'));
+                        const matches = all.filter(el => norm(el.textContent) === label);
+                        if (!matches.length) return false;
+
+                        matches.sort((a,b) => b.getBoundingClientRect().y - a.getBoundingClientRect().y);
+                        const el = matches[0];
+
+                        // climb to clickable
+                        let cur = el;
+                        for (let i=0; i<6 && cur; i++){
+                            const cs = getComputedStyle(cur);
+                            const clickable =
+                            cur.tagName?.toLowerCase() === 'button' ||
+                            cur.getAttribute?.('role') === 'button' ||
+                            cs.cursor === 'pointer' ||
+                            cur.onclick ||
+                            cur.tabIndex === 0;
+                            const r = cur.getBoundingClientRect();
+                            const visible = r.width>2 && r.height>2;
+                            if (clickable && visible) { cur.click(); return true; }
+                            cur = cur.parentElement;
+                        }
+                        el.click();
+                        return true;
+                        }
+
+                        for (const r of roots) if (clickWithin(r)) return true;
+                        return false;
+                    }
+                    """, current)
+                    if not clicked:
+                        log.warning(f"Spotify UI speed: found '{current}' but couldn't click it in player bar.")
+                        return False
+
+                    # Click the option (scroll inside menu)
+                    return self._click_spotify_speed_option(target_label)
+
+            page.wait_for_timeout(250)
+
+        log.warning("Spotify UI speed: couldn't find speed label in player bar.")
+        return False
+
+
+    def _click_spotify_speed_option(self, target_label: str) -> bool:
+        page = self._page
+
+        def norm(s: str) -> str:
+            return (s or "").strip().lower().replace("×", "x").replace(" ", "")
+
+        # Find a scrollable menu
+        menu = page.locator('[role="menu"], [data-testid*="context-menu" i], [data-testid*="popover" i], [role="dialog"]').first
+
+        # Helper: click the option
+        def try_click() -> bool:
+            want = norm(target_label)
+            loc = page.locator("text=/^\\s*\\d+(?:\\.\\d+)?[x×]\\s*$/i")
+            try:
+                count = loc.count()
+            except Exception:
+                count = 0
+            for i in range(min(count, 200)):
+                el = loc.nth(i)
+                try:
+                    if not el.is_visible():
+                        continue
+                    t = norm(el.inner_text())
+                    if t == want:
+                        el.click()
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        # Wait for menu animation
+        page.wait_for_timeout(200)
+
+        # Try without scrolling first
+        if try_click():
+            log.info(f"Spotify UI speed: set to {target_label}.")
+            return True
+
+        # Scroll up
+        for _ in range(14):
+            try:
+                if menu.is_visible(timeout=200):
+                    menu.evaluate("el => { el.scrollTop = Math.max(0, el.scrollTop - el.clientHeight * 0.9); }")
+            except Exception:
+                break
+            page.wait_for_timeout(120)
+            if try_click():
+                log.info(f"Spotify UI speed: set to {target_label}.")
+                return True
+
+        # Scroll down
+        for _ in range(14):
+            try:
+                if menu.is_visible(timeout=200):
+                    menu.evaluate("el => { el.scrollTop = el.scrollTop + el.clientHeight * 0.9; }")
+            except Exception:
+                break
+            page.wait_for_timeout(120)
+            if try_click():
+                log.info(f"Spotify UI speed: set to {target_label}.")
+                return True
+
+        log.warning(f"Spotify UI speed: menu opened, but option '{target_label}' not found/clickable.")
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return False
 
     @staticmethod
     def _chromium_args() -> list[str]:
