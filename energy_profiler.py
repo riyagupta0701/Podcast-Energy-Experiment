@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
-    "energybridge",   # assumed to be on PATH
+    "energibridge",   # assumed to be on PATH
 )
 
 SAMPLE_INTERVAL_MS = int(os.getenv("ENERGIBRIDGE_INTERVAL_MS", "500"))
@@ -31,7 +31,6 @@ class EnergyProfiler:
     # ── Public API ──────────────────────────────────────────────────────────────
 
     def start(self, output_csv: str):
-        """Start EnergyBridge recording to output_csv."""
         self._output_file = output_csv
 
         if self.dry_run:
@@ -63,7 +62,6 @@ class EnergyProfiler:
             raise RuntimeError(f"EnergyBridge failed to start: {stderr}")
 
     def stop(self, force: bool = False) -> dict | None:
-        """Stop EnergyBridge and parse the resulting CSV."""
         if self.dry_run:
             return {"dry_run": True, "total_energy_joules": None, "samples": 0}
 
@@ -90,11 +88,6 @@ class EnergyProfiler:
         return None
 
     def _parse_csv(self, filepath: str) -> dict:
-        """
-        EnergyBridge CSV columns vary by backend, but common ones are:
-          timestamp, package_energy (J), dram_energy (J), pp0_energy (J), ...
-        We sum package_energy (or total_energy) across all rows.
-        """
         rows = []
         try:
             with open(filepath, newline="") as f:
@@ -213,7 +206,6 @@ class EnergyProfiler:
 
     @staticmethod
     def _idle_command():
-        """A long-running benign command for EnergyBridge to 'wrap'."""
         if platform.system() == "Windows":
             # Windows: ping loop
             return ["ping", "-n", "99999", "127.0.0.1"]

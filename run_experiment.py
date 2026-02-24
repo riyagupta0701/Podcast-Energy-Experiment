@@ -52,7 +52,6 @@ def parse_args():
 
 
 def run_single_trial(config: dict, run_id: int, dry_run: bool, output_dir: str) -> dict:
-    """Execute a single trial for a given configuration."""
     config_name = config["name"]
     log.info(f"  Trial {run_id + 1} | {config_name}")
 

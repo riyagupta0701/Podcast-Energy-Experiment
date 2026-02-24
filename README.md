@@ -2,27 +2,6 @@
 
 Measures and compares the energy consumption of **Spotify** and **Apple Podcasts** web players across two browsers (Chrome, Brave) and two playback speeds (1×, 2×) — 8 configurations × 30 runs each.
 
----
-
-## Project Structure
-
-```
-podcast-energy-experiment/
-├── login_session.py         # Run ONCE to log into Spotify and save session
-├── run_experiment.py        # Main runner — executes all configs
-├── test_single_config.py    # Smoke-test one config (run this first)
-├── analyze_results.py       # Parse results, print stats, generate plots
-├── browser_controller.py    # Playwright automation (navigate, play, set speed)
-├── energy_profiler.py       # EnergyBridge wrapper + CSV parser
-├── results_manager.py       # Saves per-trial JSON + CSV energy files
-├── config.py                # All 8 configs, URLs, credentials, timing settings
-├── .env.example             # Template — copy to .env and fill in
-├── requirements.txt
-├── logs/                    # Created automatically on first run
-└── results/                 # Created automatically on first run
-```
-
----
 
 ## Prerequisites
 
@@ -93,7 +72,6 @@ APPLE_EPISODE_URL=https://podcasts.apple.com/us/podcast/open-retrieve-expand-loa
 # SPOTIFY_SESSION_FILE=spotify_session.json
 ```
 
----
 
 ## Setup: One-Time Spotify Login
 
@@ -109,7 +87,6 @@ Re-run `login_session.py` if the session expires (typically after a few weeks).
 
 Apple Podcasts does **not** require login.
 
----
 
 ## Configurations
 
@@ -124,7 +101,6 @@ Apple Podcasts does **not** require login.
 | `brave_apple_1x` | Brave | Apple Podcasts | 1× |
 | `brave_apple_2x` | Brave | Apple Podcasts | 2× |
 
----
 
 ## Workflow
 
@@ -196,7 +172,6 @@ python analyze_results.py --input-dir results
 python analyze_results.py --input-dir results --plot
 ```
 
----
 
 ## Playback Implementation Notes
 
@@ -215,7 +190,6 @@ python analyze_results.py --input-dir results --plot
 ### Speed setting
 Speed is set via `audio.playbackRate = N` on the HTML5 audio element directly — equivalent to using the UI speed button and works reliably across all configurations.
 
----
 
 ## Energy Measurement Notes
 
@@ -233,9 +207,11 @@ The `Delta` column (cumulative ms since start) is used to compute per-sample Δt
 | Setting | Default | Description |
 |---|---|---|
 | `runs_per_config` | 30 | Trials per configuration |
-| `measurement_duration_seconds` | 45 | Active playback duration per trial |
+| `measurement_duration_seconds` | 90 | Active playback duration per trial |
 | `cooldown_seconds` | 30 | Idle pause between runs |
+| `browser_startup_wait` | 5 | Seconds after browser opens |
 | `page_load_wait` | 10 | Seconds to wait after navigation |
+| `playback_start_wait` | 3 | Seconds to wait after clicking play |
 
 ### Confounds to control
 
@@ -249,7 +225,6 @@ The `Delta` column (cumulative ms since start) is used to compute per-sample Δt
 | Thermal state | 30s cooldown between runs |
 | Room temperature | Keep roughly constant |
 
----
 
 ## Troubleshooting
 
