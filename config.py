@@ -21,9 +21,7 @@ EXPERIMENT_SETTINGS = {
     "runs_per_config": 30,
     "measurement_duration_seconds": 90,
     "cooldown_seconds": 30,
-    "browser_startup_wait": 5,
     "page_load_wait": 10,
-    "playback_start_wait": 3,
 }
 
 CONFIGS = [
