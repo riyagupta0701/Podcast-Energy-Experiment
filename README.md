@@ -166,10 +166,7 @@ Results are saved after every trial — a crash won't lose prior data.
 ### Step 5 — Analyse results
 
 ```bash
-python analyze_results.py --input-dir results
-
-# With matplotlib box plots
-python analyze_results.py --input-dir results --plot
+python report_data_analysis.py --input-dir results
 ```
 
 
@@ -197,8 +194,9 @@ EnergyBridge output format varies by platform:
 
 | Platform | Column | Unit | Parser strategy |
 |---|---|---|---|
-| macOS | `SYSTEM_POWER (Watts)` | Watts (instantaneous) | `power × Δt` summed across samples |
-| Linux | `PACKAGE_ENERGY (J)` | Joules (cumulative) | `last − first` |
+| macOS | `SYSTEM_POWER (Watts)` | Watts (instantaneous) | $\sum$(power × Δt) |
+| Linux (AMD) | `CPU_ENERGY (J)` | Joules (cumulative) | last − first |
+| Linux (Intel) | `PACKAGE_ENERGY (J)` | Joules (cumulative) | last − first |
 
 The `Delta` column (cumulative ms since start) is used to compute per-sample Δt on macOS. Falls back to `ENERGIBRIDGE_INTERVAL_MS` (default 500ms) if timing columns are absent.
 
