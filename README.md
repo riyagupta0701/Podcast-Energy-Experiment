@@ -210,12 +210,13 @@ The `Delta` column (cumulative ms since start) is used to compute per-sample Δt
 | `cooldown_seconds` | 30 | Idle pause between runs |
 | `page_load_wait` | 10 | Seconds to wait after navigation |
 
-### Confounds to control
+### Controlled Variables
 
 | Factor | Control |
 |---|---|
 | Episode content | Same URL for all runs per platform |
 | Network | Wired connection preferred; close other apps |
+| Volume | Constant volume across all runs using the same speaker |
 | Background processes | Close everything non-essential |
 | Screen brightness | Fix brightness; disable auto-brightness |
 | Power source | AC power only |
