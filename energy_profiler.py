@@ -8,12 +8,13 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import cpuinfo
 
 log = logging.getLogger(__name__)
 
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
-    "energibridge",   # assumed to be on PATH
+    "energybridge",   # assumed to be on PATH
 )
 
 SAMPLE_INTERVAL_MS = int(os.getenv("ENERGIBRIDGE_INTERVAL_MS", "500"))
@@ -30,6 +31,20 @@ class EnergyProfiler:
 
     # ── Public API ──────────────────────────────────────────────────────────────
 
+    def detect_cpu(self):
+        manufacturer = cpuinfo.get_cpu_info().get("brand_raw", "").lower()
+
+        if "apple" in manufacturer or "m1" in manufacturer or "m2" in manufacturer:
+            return "Apple"
+
+        if "amd" in manufacturer or "ryzen" in manufacturer:
+            return "AMD"
+
+        if "intel" in manufacturer:
+            return "Intel"
+
+        return "Unknown"
+    
     def start(self, output_csv: str):
         self._output_file = output_csv
 
@@ -106,30 +121,26 @@ class EnergyProfiler:
 
         energy_col = None
         power_col  = None
+        
+        # AMD - CPU_ENERGY, INTEL - PACKAGE_ENERGY, APPLE M1 - SYSTEM_POWER
+        cpu_type = self.detect_cpu()
 
-        for candidate in ["PACKAGE_ENERGY (J)", "package_energy",
-                          "Package Energy (J)", "CPU Energy (J)",
-                          "energy", "total_energy"]:
-            if candidate in headers:
-                energy_col = candidate
-                break
+        if cpu_type == "AMD":
+            if "CPU_ENERGY (J)" in headers:
+                energy_col = "CPU_ENERGY (J)"
+
+        elif cpu_type == "Intel":
+            if "PACKAGE_ENERGY (J)" in headers:
+                energy_col = "PACKAGE_ENERGY (J)"
+            elif "PP0_ENERGY (J)" in headers:
+                energy_col = "PP0_ENERGY (J)"
+
+        elif cpu_type == "Apple":
+            if "SYSTEM_POWER (Watts)" in headers:
+                energy_col = "SYSTEM_POWER (Watts)"
 
         if energy_col is None:
-            for candidate in ["SYSTEM_POWER (Watts)", "SYSTEM_POWER",
-                              "CPU_POWER (Watts)", "CPU_POWER",
-                              "PACKAGE_POWER (Watts)"]:
-                if candidate in headers:
-                    power_col = candidate
-                    break
-
-        if energy_col is None and power_col is None:
-            for h in headers:
-                hl = h.lower()
-                if "energy" in hl:
-                    energy_col = h
-                    break
-                if "power" in hl:
-                    power_col = h
+            raise RuntimeError(f"No energy column found for CPU: {cpu_type}")
 
         duration_s  = None
         delta_times = []
