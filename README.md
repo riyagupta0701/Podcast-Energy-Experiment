@@ -168,8 +168,6 @@ Results are saved after every trial — a crash won't lose prior data.
 ```bash
 python report_data_analysis.py --input-dir results
 ```
-
-
 ## Playback Implementation Notes
 
 ### Apple Podcasts
