@@ -186,7 +186,7 @@ python report_data_analysis.py --input-dir results
 
 ### Speed setting
 Speed is set via `audio.playbackRate = N` on the HTML5 audio element directly — equivalent to using the UI speed button and works reliably across all configurations.
-If the audio element is not found, it falls back to using the UI speed button to set the playback rate.
+If the audio element is not found, it is also possible to fall back to using the UI speed button to set the playback rate.
 
 
 ## Energy Measurement Notes
