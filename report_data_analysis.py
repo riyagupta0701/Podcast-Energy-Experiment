@@ -302,7 +302,6 @@ def plot_appendix_results(data, output_dir="results"):
 
     box_dir.mkdir(parents=True, exist_ok=True)
     violin_dir.mkdir(parents=True, exist_ok=True)
-    bar_dir.mkdir(parents=True, exist_ok=True)
 
     configs = list(data.keys())
     values = list(data.values())
