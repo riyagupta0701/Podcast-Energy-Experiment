@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 ENERGIBRIDGE_BIN = os.getenv(
     "ENERGIBRIDGE_PATH",
-    "energybridge",   # assumed to be on PATH
+    "energibridge",   # assumed to be on PATH
 )
 
 SAMPLE_INTERVAL_MS = int(os.getenv("ENERGIBRIDGE_INTERVAL_MS", "500"))
@@ -134,6 +134,8 @@ class EnergyProfiler:
                 energy_col = "PACKAGE_ENERGY (J)"
             elif "PP0_ENERGY (J)" in headers:
                 energy_col = "PP0_ENERGY (J)"
+            elif "SYSTEM_POWER (Watts)" in headers:
+                energy_col = "SYSTEM_POWER (Watts)"
 
         elif cpu_type == "Apple":
             if "SYSTEM_POWER (Watts)" in headers:
