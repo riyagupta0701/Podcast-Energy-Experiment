@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import shapiro, ttest_ind, mannwhitneyu
 
+import seaborn as sns
+
 
 # Load Energy Data From Trial JSON Files
 
@@ -71,7 +73,7 @@ def describe(values):
     }
 
 
-# Normality Test (Shapiro–Wilk)
+# Normality Test (Shapiro-Wilk)
 
 # Returns:
 #   p-value
@@ -85,7 +87,7 @@ def normality_test(values):
 # Statistical Hypothesis Testing
 
 # If both groups normal -> Welch's t-test
-# If not normal -> Mann–Whitney U test
+# If not normal -> Mann-Whitney U test
 
 # Returns:
 #   test name
@@ -95,11 +97,11 @@ def compare_groups(a, b, normal_a, normal_b):
     normal = normal_a and normal_b
 
     if normal:
-        stat, p = ttest_ind(a, b, equal_var=False)  # Welch
+        stat, p = ttest_ind(a, b, equal_var=False) 
         test_name = "Welch's t-test"
     else:
         stat, p = mannwhitneyu(a, b, alternative="two-sided")
-        test_name = "Mann–Whitney U"
+        test_name = "Mann-Whitney U"
 
     return test_name, p
 
@@ -141,21 +143,154 @@ def common_language_effect_size(a, b):
 
 # Plotting (Exploratory Visualisation)
 
-# Saves:
-#   results/plots/boxplot.png
-#   results/plots/violinplot.png
+def plot_main_results(data, output_dir="results/plots"):
 
-from pathlib import Path
-import matplotlib.pyplot as plt
-import seaborn as sns
+    sns.set(style="whitegrid")
 
+    output_dir = Path(output_dir)
+    main_dir = output_dir / "main_figures"
+    main_dir.mkdir(parents=True, exist_ok=True)
 
-from pathlib import Path
-import matplotlib.pyplot as plt
-import seaborn as sns
+    # PLAYBACK DIFFERENCE (Section 3.1)
 
+    comparisons = [
+        ("chrome_apple_1x", "chrome_apple_2x", "Chrome - Apple"),
+        ("chrome_spotify_1x", "chrome_spotify_2x", "Chrome - Spotify"),
+        ("brave_apple_1x", "brave_apple_2x", "Brave - Apple"),
+        ("brave_spotify_1x", "brave_spotify_2x", "Brave - Spotify"),
+    ]
 
-def plot_all(data, output_dir="results"):
+    differences = {}
+
+    for one_x, two_x, label in comparisons:
+        if one_x in data and two_x in data:
+            mean_1x = np.mean(data[one_x])
+            mean_2x = np.mean(data[two_x])
+            differences[label] = mean_2x - mean_1x
+
+    if differences:
+        labels = list(differences.keys())
+        values = list(differences.values())
+
+        plt.figure(figsize=(8, 5))
+        plt.bar(labels, values)
+        plt.axhline(0)
+        plt.ylabel("Energy Difference (2x - 1x) [J]")
+        plt.title("Energy Difference Between 2x and 1x Playback")
+
+        for i, v in enumerate(values):
+            plt.text(i, v, f"{v:.2f} J",
+                     ha="center",
+                     va="bottom" if v >= 0 else "top")
+
+        plt.xticks(rotation=20)
+        plt.tight_layout()
+        plt.savefig(main_dir / "figure1_playback_difference.png", dpi=300)
+        plt.close()
+
+    # CHROME PLAYBACK BOXPLOT (Section 3.2)
+
+    chrome_groups = []
+    chrome_labels = []
+
+    for config, label in [
+        ("chrome_apple_1x", "Apple 1x"),
+        ("chrome_apple_2x", "Apple 2x"),
+        ("chrome_spotify_1x", "Spotify 1x"),
+        ("chrome_spotify_2x", "Spotify 2x"),
+    ]:
+        if config in data:
+            chrome_groups.append(data[config])
+            chrome_labels.append(label)
+
+    if chrome_groups:
+        plt.figure(figsize=(8, 5))
+        sns.boxplot(data=chrome_groups)
+        plt.xticks(range(len(chrome_labels)), chrome_labels)
+        plt.ylabel("Energy (J)")
+        plt.title("Playback Speed Comparison - Chrome")
+        plt.tight_layout()
+        plt.savefig(main_dir / "figure2_chrome_boxplot.png", dpi=300)
+        plt.close()
+
+    # BRAVE PLAYBACK BOXPLOT (Section 3.2)
+
+    brave_groups = []
+    brave_labels = []
+
+    for config, label in [
+        ("brave_apple_1x", "Apple 1x"),
+        ("brave_apple_2x", "Apple 2x"),
+        ("brave_spotify_1x", "Spotify 1x"),
+        ("brave_spotify_2x", "Spotify 2x"),
+    ]:
+        if config in data:
+            brave_groups.append(data[config])
+            brave_labels.append(label)
+
+    if brave_groups:
+        plt.figure(figsize=(8, 5))
+        sns.boxplot(data=brave_groups)
+        plt.xticks(range(len(brave_labels)), brave_labels)
+        plt.ylabel("Energy (J)")
+        plt.title("Playback Speed Comparison Brave")
+        plt.tight_layout()
+        plt.savefig(main_dir / "figure3_brave_boxplot.png", dpi=300)
+        plt.close()
+
+    # PLATFORM COMPARISON BAR CHART (Section 3.3)
+
+    summary = {
+        "Chrome": {"Apple": [], "Spotify": []},
+        "Brave": {"Apple": [], "Spotify": []},
+    }
+
+    for config, values in data.items():
+        mean_val = np.mean(values)
+
+        browser = None
+        platform = None
+
+        if "chrome" in config:
+            browser = "Chrome"
+        elif "brave" in config:
+            browser = "Brave"
+
+        if "apple" in config:
+            platform = "Apple"
+        elif "spotify" in config:
+            platform = "Spotify"
+
+        if browser and platform:
+            summary[browser][platform].append(mean_val)
+
+    chrome_apple = np.mean(summary["Chrome"]["Apple"])
+    chrome_spotify = np.mean(summary["Chrome"]["Spotify"])
+    brave_apple = np.mean(summary["Brave"]["Apple"])
+    brave_spotify = np.mean(summary["Brave"]["Spotify"])
+
+    browsers = ["Chrome", "Brave"]
+    apple_means = [chrome_apple, brave_apple]
+    spotify_means = [chrome_spotify, brave_spotify]
+
+    x = np.arange(len(browsers))
+    width = 0.35
+
+    plt.figure(figsize=(8, 5))
+    plt.bar(x - width / 2, apple_means, width, label="Apple Podcasts")
+    plt.bar(x + width / 2, spotify_means, width, label="Spotify")
+
+    plt.xticks(x, browsers)
+    plt.ylabel("Average Energy (J)")
+    plt.title("Average Energy Consumption by Platform and Browser")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(main_dir / "figure4_platform_comparison.png", dpi=300)
+    plt.close()
+
+    print(f"Main results figures saved to {main_dir}")
+
+def plot_appendix_results(data, output_dir="results"):
     sns.set(style="whitegrid")
 
     output_dir = Path(output_dir)
@@ -164,11 +299,10 @@ def plot_all(data, output_dir="results"):
     # Create subdirectories
     box_dir = plots_dir / "box"
     violin_dir = plots_dir / "violin"
-    hist_dir = plots_dir / "histogram"
 
     box_dir.mkdir(parents=True, exist_ok=True)
     violin_dir.mkdir(parents=True, exist_ok=True)
-    hist_dir.mkdir(parents=True, exist_ok=True)
+    bar_dir.mkdir(parents=True, exist_ok=True)
 
     configs = list(data.keys())
     values = list(data.values())
@@ -180,7 +314,6 @@ def plot_all(data, output_dir="results"):
     plt.ylabel("Energy (Joules)")
     plt.title("Energy Consumption by Configuration")
     plt.tight_layout()
-
     plt.savefig(box_dir / "global_boxplot.png", dpi=300)
     plt.close()
 
@@ -191,7 +324,6 @@ def plot_all(data, output_dir="results"):
     plt.ylabel("Energy (Joules)")
     plt.title("Energy Distribution by Configuration")
     plt.tight_layout()
-
     plt.savefig(violin_dir / "global_violinplot.png", dpi=300)
     plt.close()
 
@@ -211,23 +343,10 @@ def plot_all(data, output_dir="results"):
             plt.ylabel("Energy (Joules)")
             plt.title(f"{a} vs {b}")
             plt.tight_layout()
-
             plt.savefig(box_dir / f"{a}_vs_{b}.png", dpi=300)
             plt.close()
 
-    # HISTOGRAMS (NORMALITY CHECK)
-    for config, values in data.items():
-        plt.figure(figsize=(6, 4))
-        sns.histplot(values, kde=True)
-        plt.xlabel("Energy (Joules)")
-        plt.title(f"Histogram - {config}")
-        plt.tight_layout()
-
-        plt.savefig(hist_dir / f"{config}.png", dpi=300)
-        plt.close()
-
     print(f"Plots saved under {plots_dir}")
-
 
 # MAIN ANALYSIS PIPELINE
 
@@ -270,13 +389,16 @@ def main():
         print(f"{config}: {stats}")
 
     # Generate plots
-    plot_all(cleaned_data)
+    plot_appendix_results(cleaned_data)
+    
+    #Generate blog style plots
+    plot_main_results(cleaned_data)
 
     print("\n=== 3.3 Normality Testing ===\n")
 
     normality_results = {}
 
-    # Perform Shapiro–Wilk test per configuration
+    # Perform Shapiro-Wilk test per configuration
     for config, values in cleaned_data.items():
         p, is_normal = normality_test(values)
         normality_results[config] = is_normal

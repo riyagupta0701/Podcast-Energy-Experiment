@@ -166,13 +166,8 @@ Results are saved after every trial — a crash won't lose prior data.
 ### Step 5 — Analyse results
 
 ```bash
-python analyze_results.py --input-dir results
-
-# With matplotlib box plots
-python analyze_results.py --input-dir results --plot
+python report_data_analysis.py --input-dir results
 ```
-
-
 ## Playback Implementation Notes
 
 ### Apple Podcasts
