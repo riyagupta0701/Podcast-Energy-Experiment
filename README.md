@@ -1,4 +1,4 @@
-# Podcast Energy Consumption Experiment
+# Energy Consumption for Online Podcast Playback
 
 Measures and compares the energy consumption of **Spotify** and **Apple Podcasts** web players across two browsers (Chrome, Brave) and two playback speeds (1×, 2×) — 8 configurations × 30 runs each.
 
